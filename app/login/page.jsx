@@ -17,7 +17,7 @@ const DEMO_ACCOUNTS = [
     role: "Administrador",
     email: "admin@chinocell.demo",
     password: "ChinoAdmin123!",
-    access: "Todo de su organización (2 sucursales)",
+    access: "Todas las pantallas — cambia entre sucursales desde el menú",
   },
   {
     org: "Chino Cell — Chino Cel 1",

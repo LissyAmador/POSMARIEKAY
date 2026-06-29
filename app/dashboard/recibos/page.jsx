@@ -7,12 +7,14 @@ import {
   voidSale,
 } from "@/src/lib/pos-api";
 import { useUserProfile, formatDate } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ReceiptModal from "@/src/components/ReceiptModal";
 import { getReceiptNumber } from "@/src/lib/receipt-utils";
 
 export default function RecibosPage() {
-  const { tenant, branch } = useUserProfile();
+  const { tenant } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);

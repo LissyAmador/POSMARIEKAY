@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { getDashboardStats } from "@/src/lib/pos-api";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function DashboardPage() {
-  const { branch, tenant } = useUserProfile();
+  const { tenant } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [stats, setStats] = useState({
     products: 0,

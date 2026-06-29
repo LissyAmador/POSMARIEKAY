@@ -8,12 +8,14 @@ import {
   getSaleWithDetails,
 } from "@/src/lib/pos-api";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ProductImage from "@/src/components/ProductImage";
 import Receipt from "@/src/components/Receipt";
 
 export default function POSPage() {
-  const { profile, tenant, branch } = useUserProfile();
+  const { profile, tenant } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);

@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
+import BranchBanner from "@/src/components/BranchBanner";
 import { CurrencyProvider } from "@/src/hooks/useCurrency";
+import { BranchProvider } from "@/src/hooks/useBranchContext";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { usePermissions } from "@/src/hooks/usePermissions";
 
@@ -20,7 +22,7 @@ const ROUTE_PERMISSIONS = {
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { profile, tenant, branch, loading, error } = useUserProfile();
+  const { profile, tenant, loading, error } = useUserProfile();
   const { can } = usePermissions();
 
   useEffect(() => {
@@ -60,10 +62,15 @@ export default function DashboardLayout({ children }) {
 
   return (
     <CurrencyProvider>
-      <div className="min-h-screen bg-slate-50">
-        <Sidebar tenant={tenant} branch={branch} profile={profile} />
-        <main className="ml-64 min-h-screen p-8">{children}</main>
-      </div>
+      <BranchProvider>
+        <div className="min-h-screen bg-slate-50">
+          <Sidebar tenant={tenant} profile={profile} />
+          <main className="ml-64 min-h-screen p-8">
+            <BranchBanner />
+            {children}
+          </main>
+        </div>
+      </BranchProvider>
     </CurrencyProvider>
   );
 }

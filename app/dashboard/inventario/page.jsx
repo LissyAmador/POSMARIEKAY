@@ -15,6 +15,7 @@ import {
 import { generateSku, generateBarcode } from "@/src/lib/product-codes";
 import { readImageAsDataUrl } from "@/src/lib/image-utils";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ProductImage from "@/src/components/ProductImage";
 
@@ -35,7 +36,8 @@ const emptyProduct = {
 };
 
 export default function InventarioPage() {
-  const { profile, branch } = useUserProfile();
+  const { profile } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney, currency, setCurrency, currencies, currencyConfig } =
     useCurrency();
 

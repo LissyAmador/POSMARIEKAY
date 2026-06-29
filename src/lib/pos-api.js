@@ -67,6 +67,24 @@ export async function getUserProfile(userId) {
     .single();
 }
 
+export async function getTenantBranches(tenantId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const branches = store.branches
+      .filter((b) => b.tenant_id === tenantId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { data: branches, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("branches")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("name");
+
+  return { data: data || [], error };
+}
+
 export async function getDashboardStats(branchId) {
   if (isDemoMode()) {
     const store = getDemoStore();

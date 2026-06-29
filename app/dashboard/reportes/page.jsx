@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSalesReport } from "@/src/lib/pos-api";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import {
   PAYMENT_METHODS,
@@ -21,7 +22,7 @@ const PAYMENT_COLORS = {
 };
 
 export default function ReportesPage() {
-  const { branch } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const defaults = getDefaultDateRange();
 

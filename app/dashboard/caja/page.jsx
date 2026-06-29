@@ -7,10 +7,12 @@ import {
   closeCashRegister,
 } from "@/src/lib/pos-api";
 import { useUserProfile, formatDate } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function CajaPage() {
-  const { profile, branch } = useUserProfile();
+  const { profile } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [openRegister, setOpenRegister] = useState(null);
   const [history, setHistory] = useState([]);

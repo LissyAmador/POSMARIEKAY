@@ -10,10 +10,11 @@ import {
   formatDate,
   daysUntilDue,
 } from "@/src/hooks/useUserProfile";
+import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function CreditosPage() {
-  const { branch } = useUserProfile();
+  const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [credits, setCredits] = useState([]);
   const [loading, setLoading] = useState(true);
