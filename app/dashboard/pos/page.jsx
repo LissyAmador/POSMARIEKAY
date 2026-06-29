@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import {
+  getPOSProducts,
+  processSale as processSaleApi,
+  getSaleWithDetails,
+} from "@/src/lib/pos-api";
 import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
 import Receipt from "@/src/components/Receipt";
 
@@ -22,24 +26,10 @@ export default function POSPage() {
   async function loadProducts() {
     if (!profile?.tenant_id || !branch?.id) return;
 
-    const { data, error } = await supabase
-      .from("products")
-      .select(`
-        *,
-        inventory!inner(stock, branch_id)
-      `)
-      .eq("tenant_id", profile.tenant_id)
-      .eq("inventory.branch_id", branch.id)
-      .gt("inventory.stock", 0)
-      .order("name");
+    const { data, error } = await getPOSProducts(profile.tenant_id, branch.id);
 
     if (!error) {
-      setProducts(
-        (data || []).map((p) => ({
-          ...p,
-          stock: p.inventory?.[0]?.stock ?? 0,
-        }))
-      );
+      setProducts(data || []);
     }
     setLoading(false);
   }
@@ -122,12 +112,14 @@ export default function POSPage() {
       price: item.price,
     }));
 
-    const { data, error } = await supabase.rpc("process_sale", {
-      p_client_name: clientName || null,
-      p_sale_type: saleType,
-      p_payment_method: paymentMethod,
-      p_due_date: saleType === "credito" ? dueDate : null,
-      p_items: items,
+    const { data, error } = await processSaleApi({
+      clientName: clientName || null,
+      saleType,
+      paymentMethod,
+      dueDate: saleType === "credito" ? dueDate : null,
+      items,
+      branchId: branch.id,
+      userId: profile.user_id,
     });
 
     if (error) {
@@ -137,17 +129,8 @@ export default function POSPage() {
     }
 
     const saleId = data.sale_id;
-
-    const { data: saleData } = await supabase
-      .from("sales")
-      .select("*")
-      .eq("id", saleId)
-      .single();
-
-    const { data: detailsData } = await supabase
-      .from("sales_details")
-      .select("*, products(name)")
-      .eq("sale_id", saleId);
+    const { sale: saleData, details: detailsData } =
+      await getSaleWithDetails(saleId);
 
     setReceipt({
       sale: saleData,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import { getDashboardStats } from "@/src/lib/pos-api";
 import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
 
 export default function DashboardPage() {
@@ -19,45 +19,8 @@ export default function DashboardPage() {
     if (!branch?.id) return;
 
     async function loadStats() {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const [productsRes, salesRes, creditsRes, registerRes] = await Promise.all([
-        supabase
-          .from("inventory")
-          .select("id", { count: "exact", head: true })
-          .eq("branch_id", branch.id),
-        supabase
-          .from("sales")
-          .select("total")
-          .eq("branch_id", branch.id)
-          .gte("created_at", today.toISOString()),
-        supabase
-          .from("sales")
-          .select("id", { count: "exact", head: true })
-          .eq("branch_id", branch.id)
-          .eq("type", "credito")
-          .eq("status_credit", "pendiente"),
-        supabase
-          .from("cash_registers")
-          .select("id")
-          .eq("branch_id", branch.id)
-          .eq("status", "abierta")
-          .maybeSingle(),
-      ]);
-
-      const revenue = (salesRes.data || []).reduce(
-        (sum, s) => sum + Number(s.total),
-        0
-      );
-
-      setStats({
-        products: productsRes.count || 0,
-        salesToday: salesRes.data?.length || 0,
-        revenueToday: revenue,
-        pendingCredits: creditsRes.count || 0,
-        openRegister: !!registerRes.data,
-      });
+      const data = await getDashboardStats(branch.id);
+      setStats(data);
       setLoading(false);
     }
 

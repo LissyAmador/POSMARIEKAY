@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import { auth, getUserProfile } from "@/src/lib/pos-api";
 
 export function useUserProfile() {
   const [profile, setProfile] = useState(null);
@@ -17,7 +17,7 @@ export function useUserProfile() {
       try {
         const {
           data: { user },
-        } = await supabase.auth.getUser();
+        } = await auth.getUser();
 
         if (!user) {
           if (mounted) {
@@ -27,11 +27,8 @@ export function useUserProfile() {
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
-          .from("users_profiles")
-          .select("*, tenants(*), branches(*)")
-          .eq("user_id", user.id)
-          .single();
+        const { data: profileData, error: profileError } =
+          await getUserProfile(user.id);
 
         if (profileError) throw profileError;
 
@@ -51,7 +48,7 @@ export function useUserProfile() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = auth.onAuthStateChange(() => {
       loadProfile();
     });
 

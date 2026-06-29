@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import {
+  getPendingCredits,
+  registerCreditPayment,
+} from "@/src/lib/pos-api";
 import {
   useUserProfile,
   formatCurrency,
@@ -21,13 +24,7 @@ export default function CreditosPage() {
   async function loadCredits() {
     if (!branch?.id) return;
 
-    const { data: sales, error } = await supabase
-      .from("sales")
-      .select("*")
-      .eq("branch_id", branch.id)
-      .eq("type", "credito")
-      .eq("status_credit", "pendiente")
-      .order("due_date", { ascending: true });
+    const { data, error } = await getPendingCredits(branch.id);
 
     if (error) {
       setMessage({ type: "error", text: error.message });
@@ -35,27 +32,7 @@ export default function CreditosPage() {
       return;
     }
 
-    const enriched = await Promise.all(
-      (sales || []).map(async (sale) => {
-        const { data: payments } = await supabase
-          .from("credit_payments")
-          .select("amount_paid")
-          .eq("sale_id", sale.id);
-
-        const paid = (payments || []).reduce(
-          (sum, p) => sum + Number(p.amount_paid),
-          0
-        );
-
-        return {
-          ...sale,
-          paid,
-          pending: Number(sale.total) - paid,
-        };
-      })
-    );
-
-    setCredits(enriched);
+    setCredits(data || []);
     setLoading(false);
   }
 
@@ -80,10 +57,10 @@ export default function CreditosPage() {
 
     setProcessing(true);
 
-    const { data, error } = await supabase.rpc("register_credit_payment", {
-      p_sale_id: paymentModal.id,
-      p_amount: amount,
-    });
+    const { data, error } = await registerCreditPayment(
+      paymentModal.id,
+      amount
+    );
 
     if (error) {
       setMessage({ type: "error", text: error.message });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/src/utils/supabase/client";
+import { auth, isDemoMode } from "@/src/lib/pos-api";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
@@ -15,9 +15,10 @@ const navItems = [
 export default function Sidebar({ tenant, branch, profile }) {
   const pathname = usePathname();
   const router = useRouter();
+  const demo = isDemoMode();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    await auth.signOut();
     router.push("/login");
   }
 
@@ -31,6 +32,11 @@ export default function Sidebar({ tenant, branch, profile }) {
         <p className="truncate text-xs text-indigo-400">
           {branch?.name || ""}
         </p>
+        {demo && (
+          <span className="mt-2 inline-block rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+            DEMO
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">

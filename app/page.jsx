@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/src/utils/supabase/client";
+import { auth } from "@/src/lib/pos-api";
 
 export default function HomePage() {
   const router = useRouter();
@@ -11,7 +11,7 @@ export default function HomePage() {
     async function checkAuth() {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await auth.getSession();
       router.replace(session ? "/dashboard" : "/login");
     }
     checkAuth();

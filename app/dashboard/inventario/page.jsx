@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import {
+  getInventoryProducts,
+  saveProduct,
+  deleteProduct,
+} from "@/src/lib/pos-api";
 import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
 
 const emptyProduct = { name: "", sku: "", barcode: "", price: "", cost: "", stock: "" };
@@ -19,25 +23,15 @@ export default function InventarioPage() {
   async function loadProducts() {
     if (!profile?.tenant_id || !branch?.id) return;
 
-    const { data, error } = await supabase
-      .from("products")
-      .select(`
-        *,
-        inventory!inner(stock, branch_id)
-      `)
-      .eq("tenant_id", profile.tenant_id)
-      .eq("inventory.branch_id", branch.id)
-      .order("name");
+    const { data, error } = await getInventoryProducts(
+      profile.tenant_id,
+      branch.id
+    );
 
     if (error) {
       setMessage({ type: "error", text: error.message });
     } else {
-      setProducts(
-        (data || []).map((p) => ({
-          ...p,
-          stock: p.inventory?.[0]?.stock ?? 0,
-        }))
-      );
+      setProducts(data || []);
     }
     setLoading(false);
   }
@@ -77,49 +71,25 @@ export default function InventarioPage() {
       price: parseFloat(form.price) || 0,
       cost: parseFloat(form.cost) || 0,
     };
+    const stock = parseInt(form.stock, 10) || 0;
 
-    try {
-      if (editing) {
-        const { error } = await supabase
-          .from("products")
-          .update(productData)
-          .eq("id", editing.id);
+    const { error } = await saveProduct({
+      editing,
+      tenantId: profile.tenant_id,
+      branchId: branch.id,
+      productData,
+      stock,
+    });
 
-        if (error) throw error;
-
-        const stock = parseInt(form.stock, 10) || 0;
-        const { error: invError } = await supabase
-          .from("inventory")
-          .update({ stock })
-          .eq("branch_id", branch.id)
-          .eq("product_id", editing.id);
-
-        if (invError) throw invError;
-        setMessage({ type: "success", text: "Producto actualizado." });
-      } else {
-        const { data: newProduct, error } = await supabase
-          .from("products")
-          .insert({ ...productData, tenant_id: profile.tenant_id })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        const stock = parseInt(form.stock, 10) || 0;
-        const { error: invError } = await supabase.from("inventory").insert({
-          branch_id: branch.id,
-          product_id: newProduct.id,
-          stock,
-        });
-
-        if (invError) throw invError;
-        setMessage({ type: "success", text: "Producto creado en esta sucursal." });
-      }
-
+    if (error) {
+      setMessage({ type: "error", text: error.message });
+    } else {
+      setMessage({
+        type: "success",
+        text: editing ? "Producto actualizado." : "Producto creado en esta sucursal.",
+      });
       setShowForm(false);
       await loadProducts();
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
     }
     setSaving(false);
   }
@@ -127,7 +97,7 @@ export default function InventarioPage() {
   async function handleDelete(product) {
     if (!window.confirm(`¿Eliminar "${product.name}"?`)) return;
 
-    const { error } = await supabase.from("products").delete().eq("id", product.id);
+    const { error } = await deleteProduct(product.id);
     if (error) {
       setMessage({ type: "error", text: error.message });
     } else {

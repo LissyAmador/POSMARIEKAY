@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/src/utils/supabase/client";
+import {
+  getCashRegisterData,
+  openCashRegister,
+  closeCashRegister,
+} from "@/src/lib/pos-api";
 import { useUserProfile, formatCurrency, formatDate } from "@/src/hooks/useUserProfile";
 
 export default function CajaPage() {
@@ -16,22 +20,7 @@ export default function CajaPage() {
   async function loadData() {
     if (!branch?.id) return;
 
-    const { data: open } = await supabase
-      .from("cash_registers")
-      .select("*")
-      .eq("branch_id", branch.id)
-      .eq("status", "abierta")
-      .order("opened_at", { ascending: false })
-      .maybeSingle();
-
-    const { data: closed } = await supabase
-      .from("cash_registers")
-      .select("*")
-      .eq("branch_id", branch.id)
-      .eq("status", "cerrada")
-      .order("closed_at", { ascending: false })
-      .limit(10);
-
+    const { open, closed } = await getCashRegisterData(branch.id);
     setOpenRegister(open);
     setHistory(closed || []);
     setLoading(false);
@@ -53,13 +42,10 @@ export default function CajaPage() {
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
-    const { error } = await supabase.from("cash_registers").insert({
-      branch_id: branch.id,
-      user_id: profile.user_id,
-      status: "abierta",
-      initial_balance: amount,
-      current_balance: amount,
-      opened_at: new Date().toISOString(),
+    const { error } = await openCashRegister({
+      branchId: branch.id,
+      userId: profile.user_id,
+      initialBalance: amount,
     });
 
     if (error) {
@@ -84,13 +70,7 @@ export default function CajaPage() {
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
-    const { error } = await supabase
-      .from("cash_registers")
-      .update({
-        status: "cerrada",
-        closed_at: new Date().toISOString(),
-      })
-      .eq("id", openRegister.id);
+    const { error } = await closeCashRegister(openRegister.id);
 
     if (error) {
       setMessage({ type: "error", text: error.message });
@@ -212,9 +192,7 @@ export default function CajaPage() {
                 Monto inicial:{" "}
                 <strong>{formatCurrency(openRegister.initial_balance)}</strong>
               </p>
-              <p>
-                + Ventas al contado y abonos registrados durante el turno
-              </p>
+              <p>+ Ventas al contado y abonos registrados durante el turno</p>
               <p className="border-t border-indigo-200 pt-2 text-base">
                 Esperado en caja:{" "}
                 <strong className="text-lg">

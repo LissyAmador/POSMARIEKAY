@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/src/utils/supabase/client";
+import { auth, isDemoMode } from "@/src/lib/pos-api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const demo = isDemoMode();
   const [email, setEmail] = useState("superadmin@pos.demo");
   const [password, setPassword] = useState("SuperAdmin123!");
   const [loading, setLoading] = useState(false);
@@ -16,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { error: authError } = await auth.signInWithPassword({
       email,
       password,
     });
@@ -41,6 +42,11 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-slate-500">
             Sistema multi-tenant de punto de venta
           </p>
+          {demo && (
+            <span className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+              Modo demostración — datos de prueba incluidos
+            </span>
+          )}
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -80,13 +86,14 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-lg bg-indigo-600 py-2.5 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
           >
-            {loading ? "Ingresando..." : "Iniciar sesión"}
+            {loading ? "Ingresando..." : "Iniciar sesión demo"}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Usuario demo: superadmin@pos.demo
-        </p>
+        <div className="mt-6 rounded-lg bg-slate-50 px-4 py-3 text-center text-xs text-slate-500">
+          <p className="font-medium text-slate-700">Credenciales de prueba</p>
+          <p className="mt-1">superadmin@pos.demo / SuperAdmin123!</p>
+        </div>
       </div>
     </div>
   );
