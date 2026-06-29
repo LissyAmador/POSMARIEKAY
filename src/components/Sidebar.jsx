@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { auth, isDemoMode } from "@/src/lib/pos-api";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
@@ -16,6 +17,7 @@ export default function Sidebar({ tenant, branch, profile }) {
   const pathname = usePathname();
   const router = useRouter();
   const demo = isDemoMode();
+  const { currency, setCurrency, currencies } = useCurrency();
 
   async function handleLogout() {
     await auth.signOut();
@@ -62,6 +64,20 @@ export default function Sidebar({ tenant, branch, profile }) {
       </nav>
 
       <div className="border-t border-indigo-800 px-4 py-4">
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-indigo-300">Moneda</label>
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-full rounded-lg border border-indigo-700 bg-indigo-900 px-2 py-1.5 text-xs text-white outline-none focus:border-indigo-500"
+          >
+            {Object.values(currencies).map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="mb-3 truncate text-xs text-indigo-300">
           Rol: <span className="font-semibold text-white">{profile?.role}</span>
         </div>

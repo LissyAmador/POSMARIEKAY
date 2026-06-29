@@ -61,10 +61,11 @@ export function useUserProfile() {
   return { profile, tenant, branch, loading, error };
 }
 
-export function formatCurrency(amount) {
-  return new Intl.NumberFormat("es-MX", {
+export function formatCurrency(amount, currency = "GTQ") {
+  const locale = currency === "USD" ? "en-US" : "es-GT";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "MXN",
+    currency,
   }).format(Number(amount) || 0);
 }
 

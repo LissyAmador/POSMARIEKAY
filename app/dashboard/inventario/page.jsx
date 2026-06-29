@@ -6,17 +6,22 @@ import {
   saveProduct,
   deleteProduct,
 } from "@/src/lib/pos-api";
-import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
+import { generateSku, generateBarcode } from "@/src/lib/product-codes";
+import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
-const emptyProduct = { name: "", sku: "", barcode: "", price: "", cost: "", stock: "" };
+const emptyProduct = { name: "", price: "", cost: "", stock: "" };
 
 export default function InventarioPage() {
   const { profile, branch } = useUserProfile();
+  const { formatMoney, currency, setCurrency, currencies, currencyConfig } =
+    useCurrency();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyProduct);
+  const [previewCodes, setPreviewCodes] = useState({ sku: "", barcode: "" });
   const [message, setMessage] = useState({ type: "", text: "" });
   const [saving, setSaving] = useState(false);
 
@@ -40,9 +45,22 @@ export default function InventarioPage() {
     loadProducts();
   }, [profile?.tenant_id, branch?.id]);
 
+  useEffect(() => {
+    if (editing || !form.name.trim()) {
+      setPreviewCodes({ sku: "", barcode: "" });
+      return;
+    }
+
+    setPreviewCodes((prev) => ({
+      sku: generateSku(form.name, products),
+      barcode: prev.barcode || generateBarcode(products),
+    }));
+  }, [form.name, editing, products]);
+
   function openCreate() {
     setEditing(null);
     setForm(emptyProduct);
+    setPreviewCodes({ sku: "", barcode: "" });
     setShowForm(true);
   }
 
@@ -50,12 +68,11 @@ export default function InventarioPage() {
     setEditing(product);
     setForm({
       name: product.name,
-      sku: product.sku || "",
-      barcode: product.barcode || "",
       price: String(product.price),
       cost: String(product.cost),
       stock: String(product.stock),
     });
+    setPreviewCodes({ sku: product.sku || "", barcode: product.barcode || "" });
     setShowForm(true);
   }
 
@@ -64,12 +81,20 @@ export default function InventarioPage() {
     setSaving(true);
     setMessage({ type: "", text: "" });
 
+    const sku = editing
+      ? editing.sku
+      : previewCodes.sku || generateSku(form.name, products);
+    const barcode = editing
+      ? editing.barcode
+      : previewCodes.barcode || generateBarcode(products);
+
     const productData = {
-      name: form.name,
-      sku: form.sku || null,
-      barcode: form.barcode || null,
+      name: form.name.trim(),
+      sku,
+      barcode,
       price: parseFloat(form.price) || 0,
       cost: parseFloat(form.cost) || 0,
+      currency,
     };
     const stock = parseInt(form.stock, 10) || 0;
 
@@ -86,7 +111,9 @@ export default function InventarioPage() {
     } else {
       setMessage({
         type: "success",
-        text: editing ? "Producto actualizado." : "Producto creado en esta sucursal.",
+        text: editing
+          ? "Producto actualizado."
+          : `Producto creado — SKU: ${sku}, Código: ${barcode}`,
       });
       setShowForm(false);
       await loadProducts();
@@ -140,29 +167,138 @@ export default function InventarioPage() {
           <h2 className="mb-4 text-lg font-semibold">
             {editing ? "Editar producto" : "Nuevo producto"}
           </h2>
+
+          {!editing && (
+            <p className="mb-4 text-sm text-slate-500">
+              Ingresa el nombre y el sistema generará el SKU y código de barras
+              automáticamente.
+            </p>
+          )}
+
           <form onSubmit={handleSave} className="grid gap-4 sm:grid-cols-2">
-            {[
-              { key: "name", label: "Nombre", required: true },
-              { key: "sku", label: "SKU" },
-              { key: "barcode", label: "Código de barras" },
-              { key: "price", label: "Precio", type: "number", step: "0.01" },
-              { key: "cost", label: "Costo", type: "number", step: "0.01" },
-              { key: "stock", label: `Stock (${branch?.name})`, type: "number" },
-            ].map((field) => (
-              <div key={field.key}>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  {field.label}
-                </label>
-                <input
-                  type={field.type || "text"}
-                  step={field.step}
-                  required={field.required}
-                  value={form[field.key]}
-                  onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
-                />
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Nombre del producto *
+              </label>
+              <input
+                type="text"
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Ej. Jugo de Naranja 500ml"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            {!editing && form.name.trim() && (
+              <div className="sm:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                  Generados automáticamente
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <span className="text-xs text-slate-500">SKU</span>
+                    <p className="font-mono text-sm font-medium text-slate-900">
+                      {previewCodes.sku}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Código de barras</span>
+                    <p className="font-mono text-sm font-medium text-slate-900">
+                      {previewCodes.barcode}
+                    </p>
+                  </div>
+                </div>
               </div>
-            ))}
+            )}
+
+            {editing && (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    SKU
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={previewCodes.sku}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-600"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Código de barras
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={previewCodes.barcode}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-600"
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Moneda
+              </label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
+              >
+                {Object.values(currencies).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Precio ({currencyConfig.symbol})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Costo ({currencyConfig.symbol})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Stock ({branch?.name})
+              </label>
+              <input
+                type="number"
+                min="0"
+                required
+                value={form.stock}
+                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <div className="flex gap-2 sm:col-span-2">
               <button
                 type="submit"
@@ -194,15 +330,16 @@ export default function InventarioPage() {
               <tr>
                 <th className="px-4 py-3">Producto</th>
                 <th className="px-4 py-3">SKU</th>
+                <th className="px-4 py-3">Código barras</th>
                 <th className="px-4 py-3">Precio</th>
-                <th className="px-4 py-3">Stock (sucursal)</th>
+                <th className="px-4 py-3">Stock</th>
                 <th className="px-4 py-3">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                     No hay productos en esta sucursal
                   </td>
                 </tr>
@@ -212,8 +349,13 @@ export default function InventarioPage() {
                     <td className="px-4 py-3 font-medium text-slate-900">
                       {product.name}
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{product.sku || "—"}</td>
-                    <td className="px-4 py-3">{formatCurrency(product.price)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                      {product.sku || "—"}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                      {product.barcode || "—"}
+                    </td>
+                    <td className="px-4 py-3">{formatMoney(product.price)}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${

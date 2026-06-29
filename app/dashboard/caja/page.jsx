@@ -6,10 +6,12 @@ import {
   openCashRegister,
   closeCashRegister,
 } from "@/src/lib/pos-api";
-import { useUserProfile, formatCurrency, formatDate } from "@/src/hooks/useUserProfile";
+import { useUserProfile, formatDate } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function CajaPage() {
   const { profile, branch } = useUserProfile();
+  const { formatMoney } = useCurrency();
   const [openRegister, setOpenRegister] = useState(null);
   const [history, setHistory] = useState([]);
   const [initialBalance, setInitialBalance] = useState("");
@@ -63,7 +65,7 @@ export default function CajaPage() {
 
     const expected = Number(openRegister.current_balance);
     const confirmed = window.confirm(
-      `¿Cerrar caja?\n\nMonto inicial: ${formatCurrency(openRegister.initial_balance)}\nEsperado en caja: ${formatCurrency(expected)}`
+      `¿Cerrar caja?\n\nMonto inicial: ${formatMoney(openRegister.initial_balance)}\nEsperado en caja: ${formatMoney(expected)}`
     );
     if (!confirmed) return;
 
@@ -77,7 +79,7 @@ export default function CajaPage() {
     } else {
       setMessage({
         type: "success",
-        text: `Caja cerrada. Monto esperado: ${formatCurrency(expected)}`,
+        text: `Caja cerrada. Monto esperado: ${formatMoney(expected)}`,
       });
       await loadData();
     }
@@ -159,7 +161,7 @@ export default function CajaPage() {
               <div className="flex justify-between border-b border-slate-100 pb-3">
                 <span className="text-slate-500">Monto inicial</span>
                 <span className="font-medium">
-                  {formatCurrency(openRegister.initial_balance)}
+                  {formatMoney(openRegister.initial_balance)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -167,7 +169,7 @@ export default function CajaPage() {
                   Flujo acumulado
                 </span>
                 <span className="text-2xl font-bold text-emerald-600">
-                  {formatCurrency(openRegister.current_balance)}
+                  {formatMoney(openRegister.current_balance)}
                 </span>
               </div>
             </div>
@@ -190,13 +192,13 @@ export default function CajaPage() {
             <div className="mt-4 space-y-2 text-sm text-indigo-800">
               <p>
                 Monto inicial:{" "}
-                <strong>{formatCurrency(openRegister.initial_balance)}</strong>
+                <strong>{formatMoney(openRegister.initial_balance)}</strong>
               </p>
               <p>+ Ventas al contado y abonos registrados durante el turno</p>
               <p className="border-t border-indigo-200 pt-2 text-base">
                 Esperado en caja:{" "}
                 <strong className="text-lg">
-                  {formatCurrency(openRegister.current_balance)}
+                  {formatMoney(openRegister.current_balance)}
                 </strong>
               </p>
             </div>
@@ -225,10 +227,10 @@ export default function CajaPage() {
                     <td className="px-4 py-3">{formatDate(reg.opened_at)}</td>
                     <td className="px-4 py-3">{formatDate(reg.closed_at)}</td>
                     <td className="px-4 py-3">
-                      {formatCurrency(reg.initial_balance)}
+                      {formatMoney(reg.initial_balance)}
                     </td>
                     <td className="px-4 py-3 font-medium">
-                      {formatCurrency(reg.current_balance)}
+                      {formatMoney(reg.current_balance)}
                     </td>
                   </tr>
                 ))}

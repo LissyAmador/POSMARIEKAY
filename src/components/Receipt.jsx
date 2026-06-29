@@ -1,9 +1,11 @@
 "use client";
 
 import { QRCodeSVG } from "qrcode.react";
-import { formatCurrency, formatDate } from "@/src/hooks/useUserProfile";
+import { formatDate } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function Receipt({ sale, items, tenant, branch, onClose }) {
+  const { formatMoney } = useCurrency();
   const subtotal = items.reduce(
     (sum, item) => sum + Number(item.price) * item.quantity,
     0
@@ -54,7 +56,7 @@ export default function Receipt({ sale, items, tenant, branch, onClose }) {
                   </td>
                   <td className="py-2 text-center">{item.quantity}</td>
                   <td className="py-2 text-right">
-                    {formatCurrency(Number(item.price) * item.quantity)}
+                    {formatMoney(Number(item.price) * item.quantity)}
                   </td>
                 </tr>
               ))}
@@ -64,11 +66,11 @@ export default function Receipt({ sale, items, tenant, branch, onClose }) {
           <div className="mt-4 space-y-1 border-t border-slate-200 pt-4 text-sm">
             <div className="flex justify-between text-slate-500">
               <span>Subtotal</span>
-              <span>{formatCurrency(subtotal)}</span>
+              <span>{formatMoney(subtotal)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold text-slate-900">
               <span>Total</span>
-              <span>{formatCurrency(sale.total)}</span>
+              <span>{formatMoney(sale.total)}</span>
             </div>
             <div className="flex justify-between text-slate-500">
               <span>Tipo</span>

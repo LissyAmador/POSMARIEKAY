@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getDashboardStats } from "@/src/lib/pos-api";
-import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
+import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function DashboardPage() {
   const { branch } = useUserProfile();
+  const { formatMoney } = useCurrency();
   const [stats, setStats] = useState({
     products: 0,
     salesToday: 0,
@@ -30,7 +32,7 @@ export default function DashboardPage() {
   const cards = [
     { label: "Productos en inventario", value: stats.products, color: "bg-blue-500" },
     { label: "Ventas hoy", value: stats.salesToday, color: "bg-emerald-500" },
-    { label: "Ingresos hoy", value: formatCurrency(stats.revenueToday), color: "bg-violet-500" },
+    { label: "Ingresos hoy", value: formatMoney(stats.revenueToday), color: "bg-violet-500" },
     { label: "Créditos pendientes", value: stats.pendingCredits, color: "bg-amber-500" },
   ];
 

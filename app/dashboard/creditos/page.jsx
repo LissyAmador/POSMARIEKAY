@@ -7,13 +7,14 @@ import {
 } from "@/src/lib/pos-api";
 import {
   useUserProfile,
-  formatCurrency,
   formatDate,
   daysUntilDue,
 } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function CreditosPage() {
   const { branch } = useUserProfile();
+  const { formatMoney } = useCurrency();
   const [credits, setCredits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: "", text: "" });
@@ -67,7 +68,7 @@ export default function CreditosPage() {
     } else {
       setMessage({
         type: "success",
-        text: `Abono registrado. Saldo restante: ${formatCurrency(data.remaining)}`,
+        text: `Abono registrado. Saldo restante: ${formatMoney(data.remaining)}`,
       });
       setPaymentModal(null);
       setPaymentAmount("");
@@ -167,17 +168,17 @@ export default function CreditosPage() {
                   <div className="text-right">
                     <p className="text-sm text-slate-500">Total</p>
                     <p className="text-lg font-bold">
-                      {formatCurrency(credit.total)}
+                      {formatMoney(credit.total)}
                     </p>
                     <p className="text-sm text-emerald-600">
-                      Abonado: {formatCurrency(credit.paid)}
+                      Abonado: {formatMoney(credit.paid)}
                     </p>
                     <p
                       className={`text-xl font-bold ${
                         isOverdue ? "text-red-600" : "text-slate-900"
                       }`}
                     >
-                      Pendiente: {formatCurrency(credit.pending)}
+                      Pendiente: {formatMoney(credit.pending)}
                     </p>
                   </div>
                 </div>
@@ -212,7 +213,7 @@ export default function CreditosPage() {
             <p className="mt-2 text-sm">
               Saldo pendiente:{" "}
               <strong className="text-red-600">
-                {formatCurrency(paymentModal.pending)}
+                {formatMoney(paymentModal.pending)}
               </strong>
             </p>
 

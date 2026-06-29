@@ -6,11 +6,13 @@ import {
   processSale as processSaleApi,
   getSaleWithDetails,
 } from "@/src/lib/pos-api";
-import { useUserProfile, formatCurrency } from "@/src/hooks/useUserProfile";
+import { useUserProfile } from "@/src/hooks/useUserProfile";
+import { useCurrency } from "@/src/hooks/useCurrency";
 import Receipt from "@/src/components/Receipt";
 
 export default function POSPage() {
   const { profile, tenant, branch } = useUserProfile();
+  const { formatMoney } = useCurrency();
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [clientName, setClientName] = useState("");
@@ -192,7 +194,7 @@ export default function POSPage() {
                 >
                   <p className="font-semibold text-slate-900">{product.name}</p>
                   <p className="mt-1 text-lg font-bold text-indigo-600">
-                    {formatCurrency(product.price)}
+                    {formatMoney(product.price)}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     Stock: {product.stock}
@@ -218,7 +220,7 @@ export default function POSPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.name}</p>
                     <p className="text-xs text-slate-400">
-                      {formatCurrency(item.price)} c/u
+                      {formatMoney(item.price)} c/u
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -252,7 +254,7 @@ export default function POSPage() {
           <div className="mt-4 border-t border-slate-200 pt-4">
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
-              <span className="text-indigo-600">{formatCurrency(cartTotal)}</span>
+              <span className="text-indigo-600">{formatMoney(cartTotal)}</span>
             </div>
           </div>
 

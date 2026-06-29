@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
+import { CurrencyProvider } from "@/src/hooks/useCurrency";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 
 export default function DashboardLayout({ children }) {
@@ -35,9 +36,11 @@ export default function DashboardLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar tenant={tenant} branch={branch} profile={profile} />
-      <main className="ml-64 min-h-screen p-8">{children}</main>
-    </div>
+    <CurrencyProvider>
+      <div className="min-h-screen bg-slate-50">
+        <Sidebar tenant={tenant} branch={branch} profile={profile} />
+        <main className="ml-64 min-h-screen p-8">{children}</main>
+      </div>
+    </CurrencyProvider>
   );
 }
