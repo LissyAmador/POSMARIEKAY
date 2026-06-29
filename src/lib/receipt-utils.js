@@ -1,11 +1,13 @@
-export function buildQrValue(sale, branch) {
-  return JSON.stringify({
-    sale_id: sale.id,
-    total: sale.total,
-    date: sale.created_at,
-    branch: branch?.name,
-    verify: `https://pos-saas-black.vercel.app/recibo/${sale.id}`,
-  });
+export function getReceiptUrl(saleId) {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/recibo/${saleId}`;
+  }
+  return `https://pos-saas-black.vercel.app/recibo/${saleId}`;
+}
+
+/** Valor del QR: URL directa escaneable por cualquier lector */
+export function buildQrValue(sale) {
+  return getReceiptUrl(sale.id);
 }
 
 export function getReceiptNumber(saleId) {

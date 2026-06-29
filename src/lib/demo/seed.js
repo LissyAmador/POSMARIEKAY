@@ -7,6 +7,20 @@ export const DEMO_USER = {
 export const DEMO_TENANT_ID = "a0000000-0000-4000-8000-000000000001";
 export const DEMO_BRANCH_ID = "b0000000-0000-4000-8000-000000000001";
 
+export const DEMO_CATEGORIES = [
+  { id: "cat-001", tenant_id: DEMO_TENANT_ID, name: "Bebidas" },
+  { id: "cat-002", tenant_id: DEMO_TENANT_ID, name: "Alimentos" },
+  { id: "cat-003", tenant_id: DEMO_TENANT_ID, name: "Snacks" },
+];
+
+export const DEMO_PRESENTATIONS = [
+  { id: "pres-001", tenant_id: DEMO_TENANT_ID, name: "Unidad" },
+  { id: "pres-002", tenant_id: DEMO_TENANT_ID, name: "Vaso" },
+  { id: "pres-003", tenant_id: DEMO_TENANT_ID, name: "Botella" },
+  { id: "pres-004", tenant_id: DEMO_TENANT_ID, name: "Pack" },
+  { id: "pres-005", tenant_id: DEMO_TENANT_ID, name: "Lata" },
+];
+
 export function createInitialDemoData() {
   const now = new Date();
   const yesterday = new Date(now);
@@ -20,47 +34,62 @@ export function createInitialDemoData() {
     {
       id: "c0000000-0000-4000-8000-000000000001",
       tenant_id: DEMO_TENANT_ID,
+      category_id: "cat-001",
+      presentation_id: "pres-002",
       name: "Café Americano",
       sku: "CAF-001",
       barcode: "7501234567890",
       price: 45,
       cost: 15,
+      image_url: null,
     },
     {
       id: "c0000000-0000-4000-8000-000000000002",
       tenant_id: DEMO_TENANT_ID,
+      category_id: "cat-002",
+      presentation_id: "pres-001",
       name: "Sandwich Jamón",
       sku: "SAN-001",
       barcode: "7501234567891",
       price: 65,
       cost: 28,
+      image_url: null,
     },
     {
       id: "c0000000-0000-4000-8000-000000000003",
       tenant_id: DEMO_TENANT_ID,
+      category_id: "cat-001",
+      presentation_id: "pres-003",
       name: "Agua 600ml",
       sku: "AGU-001",
       barcode: "7501234567892",
       price: 18,
       cost: 6,
+      image_url: null,
     },
     {
       id: "c0000000-0000-4000-8000-000000000004",
       tenant_id: DEMO_TENANT_ID,
+      category_id: "cat-003",
+      presentation_id: "pres-004",
       name: "Galletas Pack",
       sku: "GAL-001",
       barcode: "7501234567893",
       price: 32,
       cost: 14,
+      image_url: null,
     },
     {
       id: "c0000000-0000-4000-8000-000000000005",
       tenant_id: DEMO_TENANT_ID,
+      category_id: "cat-001",
+      presentation_id: "pres-005",
       name: "Refresco 355ml",
       sku: "REF-001",
       barcode: "7501234567894",
       price: 25,
       cost: 10,
+      image_url: null,
     },
   ];
 
@@ -122,6 +151,8 @@ export function createInitialDemoData() {
         role: "admin_org",
       },
     ],
+    categories: DEMO_CATEGORIES,
+    presentations: DEMO_PRESENTATIONS,
     products,
     inventory,
     cash_registers: [],

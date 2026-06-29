@@ -11,6 +11,7 @@ import {
   formatReceiptDateShort,
   getItemName,
   getReceiptNumber,
+  getReceiptUrl,
 } from "@/src/lib/receipt-utils";
 import { getDigitalReceiptPath, triggerNativePrint } from "@/src/lib/print-receipt";
 import { useCurrency } from "@/src/hooks/useCurrency";
@@ -29,7 +30,8 @@ function ReceiptBody({
   const subtotal = calculateSubtotal(items);
   const receiptNo = getReceiptNumber(sale.id);
   const isCompact = variant === "thermal";
-  const qrValue = buildQrValue(sale, branch);
+  const qrValue = buildQrValue(sale);
+  const receiptUrl = getReceiptUrl(sale.id);
 
   const paymentLabel =
     sale.type === "contado"
@@ -166,8 +168,8 @@ function ReceiptBody({
         <p className="mt-2 text-center text-xs text-slate-500">
           Escanee para abrir el recibo digital
         </p>
-        <p className="mt-1 break-all text-center text-[10px] text-slate-400">
-          pos-saas-black.vercel.app/recibo/{sale.id.slice(0, 8)}
+        <p className="mt-1 break-all text-center text-[10px] text-indigo-600">
+          {receiptUrl}
         </p>
       </div>
     </div>

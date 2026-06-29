@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getPOSProducts,
+  getCategories,
   processSale as processSaleApi,
   getSaleWithDetails,
 } from "@/src/lib/pos-api";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { useCurrency } from "@/src/hooks/useCurrency";
+import ProductImage from "@/src/components/ProductImage";
 import Receipt from "@/src/components/Receipt";
 
 export default function POSPage() {
   const { profile, tenant, branch } = useUserProfile();
   const { formatMoney } = useCurrency();
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
   const [clientName, setClientName] = useState("");
   const [saleType, setSaleType] = useState("contado");
@@ -24,15 +27,18 @@ export default function POSPage() {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [receipt, setReceipt] = useState(null);
   const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
 
   async function loadProducts() {
     if (!profile?.tenant_id || !branch?.id) return;
 
-    const { data, error } = await getPOSProducts(profile.tenant_id, branch.id);
+    const [prodRes, catRes] = await Promise.all([
+      getPOSProducts(profile.tenant_id, branch.id),
+      getCategories(profile.tenant_id),
+    ]);
 
-    if (!error) {
-      setProducts(data || []);
-    }
+    if (!prodRes.error) setProducts(prodRes.data || []);
+    setCategories(catRes.data || []);
     setLoading(false);
   }
 
@@ -41,11 +47,26 @@ export default function POSPage() {
   }, [profile?.tenant_id, branch?.id]);
 
   const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
-      (p.barcode && p.barcode.includes(search))
+    (p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
+        (p.barcode && p.barcode.includes(search));
+      const matchesCategory =
+        filterCategory === "all" || p.category_id === filterCategory;
+      return matchesSearch && matchesCategory;
+    }
   );
+
+  const groupedProducts = useMemo(() => {
+    const groups = {};
+    filteredProducts.forEach((product) => {
+      const key = product.category_name || "Sin categoría";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(product);
+    });
+    return groups;
+  }, [filteredProducts]);
 
   function addToCart(product) {
     setCart((prev) => {
@@ -66,6 +87,7 @@ export default function POSPage() {
           price: Number(product.price),
           quantity: 1,
           maxStock: product.stock,
+          image_url: product.image_url,
         },
       ];
     });
@@ -173,36 +195,68 @@ export default function POSPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <input
-            type="text"
-            placeholder="Buscar por nombre, SKU o código de barras..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-          />
+          <div className="mb-4 flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por nombre, SKU o código de barras..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+            />
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+            >
+              <option value="all">Todas las categorías</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {loading ? (
             <div className="flex h-48 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
             </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredProducts.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() => addToCart(product)}
-                  className="rounded-xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 transition hover:ring-indigo-300 hover:shadow-md"
-                >
-                  <p className="font-semibold text-slate-900">{product.name}</p>
-                  <p className="mt-1 text-lg font-bold text-indigo-600">
-                    {formatMoney(product.price)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Stock: {product.stock}
-                  </p>
-                </button>
-              ))}
+          ) : Object.keys(groupedProducts).length === 0 ? (
+            <div className="rounded-xl bg-white p-8 text-center text-slate-400 ring-1 ring-slate-200">
+              No hay productos disponibles
             </div>
+          ) : (
+            Object.entries(groupedProducts).map(([categoryName, items]) => (
+              <div key={categoryName} className="mb-6">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-indigo-700">
+                  {categoryName}
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {items.map((product) => (
+                    <button
+                      key={product.id}
+                      onClick={() => addToCart(product)}
+                      className="rounded-xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 transition hover:ring-indigo-300 hover:shadow-md"
+                    >
+                      <ProductImage
+                        src={product.image_url}
+                        name={product.name}
+                        size="lg"
+                        className="mb-3"
+                      />
+                      <p className="font-semibold text-slate-900">{product.name}</p>
+                      <p className="text-xs text-slate-500">{product.presentation_name}</p>
+                      <p className="mt-1 text-lg font-bold text-indigo-600">
+                        {formatMoney(product.price)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Stock: {product.stock}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
           )}
         </div>
 
@@ -218,11 +272,14 @@ export default function POSPage() {
                   key={item.product_id}
                   className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.name}</p>
-                    <p className="text-xs text-slate-400">
-                      {formatMoney(item.price)} c/u
-                    </p>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <ProductImage src={item.image_url} name={item.name} size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{item.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {formatMoney(item.price)} c/u
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     <button

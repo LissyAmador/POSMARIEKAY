@@ -528,3 +528,40 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.process_sale TO authenticated;
 GRANT EXECUTE ON FUNCTION public.register_credit_payment TO authenticated;
+
+-- -----------------------------------------------------------------------------
+-- Categorías, presentaciones e imágenes de productos
+-- -----------------------------------------------------------------------------
+CREATE TABLE public.categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.presentations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id),
+  ADD COLUMN IF NOT EXISTS presentation_id UUID REFERENCES public.presentations(id),
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'GTQ';
+
+ALTER TABLE public.sales
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'activa',
+  ADD COLUMN IF NOT EXISTS payment_method TEXT,
+  ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.presentations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "categories_tenant" ON public.categories
+  FOR ALL USING (tenant_id = public.get_my_tenant_id());
+
+CREATE POLICY "presentations_tenant" ON public.presentations
+  FOR ALL USING (tenant_id = public.get_my_tenant_id());

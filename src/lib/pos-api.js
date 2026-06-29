@@ -223,18 +223,150 @@ export async function closeCashRegister(registerId) {
     .eq("id", registerId);
 }
 
+function enrichProduct(store, product, branchId) {
+  const inv = store.inventory.find(
+    (i) => i.branch_id === branchId && i.product_id === product.id
+  );
+  const category = (store.categories || []).find((c) => c.id === product.category_id);
+  const presentation = (store.presentations || []).find(
+    (p) => p.id === product.presentation_id
+  );
+
+  return {
+    ...product,
+    stock: inv?.stock ?? 0,
+    inventory: inv ? [inv] : [],
+    category,
+    presentation,
+    category_name: category?.name || "Sin categoría",
+    presentation_name: presentation?.name || "—",
+  };
+}
+
+export async function getCategories(tenantId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    return {
+      data: (store.categories || []).filter((c) => c.tenant_id === tenantId),
+      error: null,
+    };
+  }
+  return supabase.from("categories").select("*").eq("tenant_id", tenantId).order("name");
+}
+
+export async function saveCategory({ editing, tenantId, name }) {
+  if (!name?.trim()) return { error: { message: "Nombre requerido." } };
+
+  if (isDemoMode()) {
+    if (editing) {
+      updateDemoStore((data) => ({
+        ...data,
+        categories: data.categories.map((c) =>
+          c.id === editing.id ? { ...c, name: name.trim() } : c
+        ),
+      }));
+    } else {
+      updateDemoStore((data) => ({
+        ...data,
+        categories: [
+          ...(data.categories || []),
+          { id: uuid(), tenant_id: tenantId, name: name.trim() },
+        ],
+      }));
+    }
+    return { error: null };
+  }
+
+  if (editing) {
+    return supabase.from("categories").update({ name: name.trim() }).eq("id", editing.id);
+  }
+  return supabase.from("categories").insert({ tenant_id: tenantId, name: name.trim() });
+}
+
+export async function deleteCategory(categoryId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const inUse = store.products.some((p) => p.category_id === categoryId);
+    if (inUse) {
+      return { error: { message: "No se puede eliminar: hay productos en esta categoría." } };
+    }
+    updateDemoStore((data) => ({
+      ...data,
+      categories: data.categories.filter((c) => c.id !== categoryId),
+    }));
+    return { error: null };
+  }
+  return supabase.from("categories").delete().eq("id", categoryId);
+}
+
+export async function getPresentations(tenantId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    return {
+      data: (store.presentations || []).filter((p) => p.tenant_id === tenantId),
+      error: null,
+    };
+  }
+  return supabase.from("presentations").select("*").eq("tenant_id", tenantId).order("name");
+}
+
+export async function savePresentation({ editing, tenantId, name }) {
+  if (!name?.trim()) return { error: { message: "Nombre requerido." } };
+
+  if (isDemoMode()) {
+    if (editing) {
+      updateDemoStore((data) => ({
+        ...data,
+        presentations: data.presentations.map((p) =>
+          p.id === editing.id ? { ...p, name: name.trim() } : p
+        ),
+      }));
+    } else {
+      updateDemoStore((data) => ({
+        ...data,
+        presentations: [
+          ...(data.presentations || []),
+          { id: uuid(), tenant_id: tenantId, name: name.trim() },
+        ],
+      }));
+    }
+    return { error: null };
+  }
+
+  if (editing) {
+    return supabase.from("presentations").update({ name: name.trim() }).eq("id", editing.id);
+  }
+  return supabase.from("presentations").insert({ tenant_id: tenantId, name: name.trim() });
+}
+
+export async function deletePresentation(presentationId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const inUse = store.products.some((p) => p.presentation_id === presentationId);
+    if (inUse) {
+      return { error: { message: "No se puede eliminar: hay productos con esta presentación." } };
+    }
+    updateDemoStore((data) => ({
+      ...data,
+      presentations: data.presentations.filter((p) => p.id !== presentationId),
+    }));
+    return { error: null };
+  }
+  return supabase.from("presentations").delete().eq("id", presentationId);
+}
+
 export async function getInventoryProducts(tenantId, branchId) {
   if (isDemoMode()) {
     const store = getDemoStore();
     const products = store.products
       .filter((p) => p.tenant_id === tenantId)
-      .map((p) => {
-        const inv = store.inventory.find(
-          (i) => i.branch_id === branchId && i.product_id === p.id
-        );
-        return { ...p, stock: inv?.stock ?? 0, inventory: inv ? [inv] : [] };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map((p) => enrichProduct(store, p, branchId))
+      .sort((a, b) => {
+        const catA = a.category?.name || "";
+        const catB = b.category?.name || "";
+        if (catA !== catB) return catA.localeCompare(catB);
+        return a.name.localeCompare(b.name);
+      });
 
     return { data: products, error: null };
   }
