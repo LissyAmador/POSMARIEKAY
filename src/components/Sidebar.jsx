@@ -11,6 +11,7 @@ const navItems = [
   { href: "/dashboard/inventario", label: "Inventario", icon: "📦" },
   { href: "/dashboard/caja", label: "Caja", icon: "💰" },
   { href: "/dashboard/creditos", label: "Créditos", icon: "📋" },
+  { href: "/dashboard/recibos", label: "Recibos", icon: "🧾" },
 ];
 
 export default function Sidebar({ tenant, branch, profile }) {

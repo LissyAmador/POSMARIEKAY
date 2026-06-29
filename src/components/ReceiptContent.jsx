@@ -1,7 +1,9 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { QRCodeCanvas } from "qrcode.react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   buildQrValue,
   calculateSubtotal,
@@ -10,49 +12,24 @@ import {
   getItemName,
   getReceiptNumber,
 } from "@/src/lib/receipt-utils";
-import { openDigitalReceipt, printReceiptDocument } from "@/src/lib/print-receipt";
+import { getDigitalReceiptPath, triggerNativePrint } from "@/src/lib/print-receipt";
 import { useCurrency } from "@/src/hooks/useCurrency";
 
-export default function ReceiptContent({
+function ReceiptBody({
   sale,
   items,
   tenant,
   branch,
   paymentMethod,
-  variant = "screen",
-  showActions = variant === "screen",
-  qrDataUrl,
+  variant,
+  formatMoney,
+  qrRef,
+  voided = false,
 }) {
-  const { formatMoney } = useCurrency();
-  const qrRef = useRef(null);
   const subtotal = calculateSubtotal(items);
-  const qrValue = buildQrValue(sale, branch);
   const receiptNo = getReceiptNumber(sale.id);
   const isCompact = variant === "thermal";
-
-  function captureQr() {
-    const canvas = qrRef.current;
-    if (!canvas) return "";
-    return canvas.toDataURL("image/png");
-  }
-
-  function handlePrint(format) {
-    printReceiptDocument({
-      format,
-      sale,
-      items,
-      tenant,
-      branch,
-      formatMoney,
-      qrDataUrl: captureQr(),
-      paymentMethod: paymentMethod || sale.payment_method,
-    });
-  }
-
-  useEffect(() => {
-    const timer = setTimeout(() => captureQr(), 150);
-    return () => clearTimeout(timer);
-  }, [sale.id, items.length]);
+  const qrValue = buildQrValue(sale, branch);
 
   const paymentLabel =
     sale.type === "contado"
@@ -70,6 +47,12 @@ export default function ReceiptContent({
 
   return (
     <div className={containerClass}>
+      {voided && (
+        <div className="mb-3 border-2 border-red-500 py-2 text-center text-sm font-bold uppercase text-red-600">
+          Recibo anulado
+        </div>
+      )}
+
       <div
         className={
           isCompact
@@ -173,18 +156,13 @@ export default function ReceiptContent({
       </div>
 
       <div className="mt-6 flex flex-col items-center border-t border-dashed border-slate-300 pt-4">
-        {qrDataUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrDataUrl} alt="QR del recibo" className="h-28 w-28" />
-        ) : (
-          <QRCodeCanvas
-            ref={qrRef}
-            value={qrValue}
-            size={isCompact ? 96 : 140}
-            level="M"
-            includeMargin
-          />
-        )}
+        <QRCodeCanvas
+          ref={qrRef}
+          value={qrValue}
+          size={isCompact ? 96 : 140}
+          level="M"
+          includeMargin
+        />
         <p className="mt-2 text-center text-xs text-slate-500">
           Escanee para abrir el recibo digital
         </p>
@@ -192,9 +170,52 @@ export default function ReceiptContent({
           pos-saas-black.vercel.app/recibo/{sale.id.slice(0, 8)}
         </p>
       </div>
+    </div>
+  );
+}
+
+export default function ReceiptContent({
+  sale,
+  items,
+  tenant,
+  branch,
+  paymentMethod,
+  variant = "screen",
+  showActions = variant === "screen",
+}) {
+  const { formatMoney } = useCurrency();
+  const [printFormat, setPrintFormat] = useState("half-letter");
+  const [mounted, setMounted] = useState(false);
+  const qrRef = useRef(null);
+  const voided = sale.status === "anulada";
+
+  useEffect(() => setMounted(true), []);
+
+  function handlePrint(format) {
+    setPrintFormat(format);
+    requestAnimationFrame(() => {
+      setTimeout(() => triggerNativePrint(format), 80);
+    });
+  }
+
+  const printVariant = printFormat === "thermal" ? "thermal" : "half-letter";
+
+  return (
+    <>
+      <ReceiptBody
+        sale={sale}
+        items={items}
+        tenant={tenant}
+        branch={branch}
+        paymentMethod={paymentMethod}
+        variant={variant}
+        formatMoney={formatMoney}
+        qrRef={qrRef}
+        voided={voided}
+      />
 
       {showActions && (
-        <div className="mt-6 grid gap-2 print:hidden sm:grid-cols-3">
+        <div className="mt-6 grid gap-2 sm:grid-cols-3">
           <button
             type="button"
             onClick={() => handlePrint("thermal")}
@@ -209,15 +230,35 @@ export default function ReceiptContent({
           >
             Imprimir media carta
           </button>
-          <button
-            type="button"
-            onClick={() => openDigitalReceipt(sale.id)}
-            className="rounded-lg border border-indigo-200 bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+          <Link
+            href={getDigitalReceiptPath(sale.id)}
+            className="rounded-lg border border-indigo-200 bg-indigo-50 py-2.5 text-center text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
           >
             Ver digital
-          </button>
+          </Link>
         </div>
       )}
-    </div>
+
+      {mounted &&
+        createPortal(
+          <div
+            id="print-receipt-root"
+            className="pointer-events-none fixed left-[-10000px] top-0 z-[-1] bg-white"
+          >
+            <ReceiptBody
+              sale={sale}
+              items={items}
+              tenant={tenant}
+              branch={branch}
+              paymentMethod={paymentMethod}
+              variant={printVariant}
+              formatMoney={formatMoney}
+              qrRef={qrRef}
+              voided={voided}
+            />
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

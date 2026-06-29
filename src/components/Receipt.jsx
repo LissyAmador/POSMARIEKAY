@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import Link from "next/link";
 import ReceiptContent from "@/src/components/ReceiptContent";
-import { openDigitalReceipt } from "@/src/lib/print-receipt";
+import { getDigitalReceiptPath } from "@/src/lib/print-receipt";
 
 export default function Receipt({
   sale,
@@ -12,10 +12,6 @@ export default function Receipt({
   paymentMethod,
   onClose,
 }) {
-  useEffect(() => {
-    openDigitalReceipt(sale.id);
-  }, [sale.id]);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
@@ -35,6 +31,15 @@ export default function Receipt({
             paymentMethod={paymentMethod}
             variant="screen"
           />
+          <p className="mt-4 text-center text-xs text-slate-500">
+            También puede consultarlo en{" "}
+            <Link
+              href={getDigitalReceiptPath(sale.id)}
+              className="font-medium text-indigo-600 hover:underline"
+            >
+              recibo digital
+            </Link>
+          </p>
         </div>
 
         <div className="sticky bottom-0 border-t border-slate-200 bg-white px-6 py-4">

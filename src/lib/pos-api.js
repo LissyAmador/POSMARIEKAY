@@ -62,12 +62,16 @@ export async function getDashboardStats(branchId) {
     today.setHours(0, 0, 0, 0);
 
     const salesToday = store.sales.filter(
-      (s) => s.branch_id === branchId && new Date(s.created_at) >= today
+      (s) =>
+        s.branch_id === branchId &&
+        s.status !== "anulada" &&
+        new Date(s.created_at) >= today
     );
     const revenueToday = salesToday.reduce((sum, s) => sum + Number(s.total), 0);
     const pendingCredits = store.sales.filter(
       (s) =>
         s.branch_id === branchId &&
+        s.status !== "anulada" &&
         s.type === "credito" &&
         s.status_credit === "pendiente"
     ).length;
@@ -388,6 +392,7 @@ export async function processSale({
       type: saleType,
       payment_method: paymentMethod || null,
       total,
+      status: "activa",
       status_credit: saleType === "credito" ? "pendiente" : "pagado",
       due_date: saleType === "credito" ? dueDate : null,
       created_at: new Date().toISOString(),
@@ -537,6 +542,7 @@ export async function getPendingCredits(branchId) {
       .filter(
         (s) =>
           s.branch_id === branchId &&
+          s.status !== "anulada" &&
           s.type === "credito" &&
           s.status_credit === "pendiente"
       )
@@ -591,6 +597,10 @@ export async function registerCreditPayment(saleId, amount) {
 
     if (!sale || sale.type !== "credito" || sale.status_credit !== "pendiente") {
       return { error: { message: "La venta no es un crédito pendiente." } };
+    }
+
+    if (sale.status === "anulada") {
+      return { error: { message: "No se puede abonar un recibo anulado." } };
     }
 
     const paid = store.credit_payments
@@ -650,6 +660,122 @@ export async function registerCreditPayment(saleId, amount) {
     p_sale_id: saleId,
     p_amount: amount,
   });
+}
+
+export async function getIssuedReceipts(branchId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const receipts = store.sales
+      .filter((s) => s.branch_id === branchId)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map((sale) => {
+        const items = store.sales_details.filter((d) => d.sale_id === sale.id);
+        return {
+          ...sale,
+          itemCount: items.length,
+        };
+      });
+
+    return { data: receipts, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("sales")
+    .select("*, sales_details(count)")
+    .eq("branch_id", branchId)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error };
+
+  return {
+    data: (data || []).map((sale) => ({
+      ...sale,
+      itemCount: sale.sales_details?.[0]?.count || 0,
+    })),
+    error: null,
+  };
+}
+
+export async function voidSale(saleId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const sale = store.sales.find((s) => s.id === saleId);
+
+    if (!sale) {
+      return { error: { message: "Recibo no encontrado." } };
+    }
+
+    if (sale.status === "anulada") {
+      return { error: { message: "Este recibo ya fue anulado." } };
+    }
+
+    const details = store.sales_details.filter((d) => d.sale_id === saleId);
+    const payments = store.credit_payments.filter((p) => p.sale_id === saleId);
+    const paymentsTotal = payments.reduce(
+      (sum, p) => sum + Number(p.amount_paid),
+      0
+    );
+
+    updateDemoStore((data) => {
+      let inventory = data.inventory.map((item) => {
+        const detail = details.find(
+          (d) =>
+            d.product_id === item.product_id &&
+            item.branch_id === sale.branch_id
+        );
+        if (!detail) return item;
+        return { ...item, stock: item.stock + detail.quantity };
+      });
+
+      let cash_registers = data.cash_registers;
+
+      if (sale.type === "contado") {
+        cash_registers = cash_registers.map((register) =>
+          register.branch_id === sale.branch_id && register.status === "abierta"
+            ? {
+                ...register,
+                current_balance:
+                  Number(register.current_balance) - Number(sale.total),
+              }
+            : register
+        );
+      }
+
+      if (paymentsTotal > 0) {
+        cash_registers = cash_registers.map((register) =>
+          register.branch_id === sale.branch_id && register.status === "abierta"
+            ? {
+                ...register,
+                current_balance:
+                  Number(register.current_balance) - paymentsTotal,
+              }
+            : register
+        );
+      }
+
+      const sales = data.sales.map((s) =>
+        s.id === saleId
+          ? {
+              ...s,
+              status: "anulada",
+              voided_at: new Date().toISOString(),
+              status_credit:
+                s.type === "credito" ? "pagado" : s.status_credit,
+            }
+          : s
+      );
+
+      return { ...data, inventory, cash_registers, sales };
+    });
+
+    return { error: null };
+  }
+
+  return {
+    error: {
+      message: "Anulación disponible en modo demo. Conecte Supabase para producción.",
+    },
+  };
 }
 
 export { isDemoMode, DEMO_TENANT_ID, DEMO_BRANCH_ID };
