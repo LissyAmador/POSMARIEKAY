@@ -47,6 +47,27 @@ const DEMO_ACCOUNTS = [
     password: "Conta123!",
     access: "Caja, Reportes y Recibos",
   },
+  {
+    org: "Sandy",
+    role: "Administradora",
+    email: "admin@sandy.demo",
+    password: "SandyAdmin123!",
+    access: "Todas las pantallas — Mary Kay, ropa y carteras",
+  },
+  {
+    org: "Sandy — María",
+    role: "Vendedora",
+    email: "maria@sandy.demo",
+    password: "Sandy123!",
+    access: "POS, Inventario, Intercambios y Reportes de ganancia",
+  },
+  {
+    org: "Sandy — Laura",
+    role: "Vendedora",
+    email: "laura@sandy.demo",
+    password: "Sandy123!",
+    access: "POS, Inventario, Intercambios y Reportes de ganancia",
+  },
 ];
 
 export default function LoginPage() {

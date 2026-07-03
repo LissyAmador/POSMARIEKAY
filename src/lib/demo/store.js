@@ -4,6 +4,7 @@ import {
   ROLE_CHINO_ADMIN,
   ROLE_CHINO_VENDEDOR,
 } from "./chino-cell-seed";
+import { mergeSandyIfMissing, migrateSandyExcelProducts } from "./sandy-seed";
 
 const STORAGE_KEY = "pos-demo-data";
 
@@ -78,10 +79,17 @@ function migrateStore(data) {
     category_id: product.category_id || initial.categories[0]?.id || null,
     presentation_id: product.presentation_id || initial.presentations[0]?.id || null,
     image_url: product.image_url || null,
+    attributes: product.attributes || {},
   }));
 
   migrated = mergeChinoCellIfMissing(migrated, initial);
+  migrated = mergeSandyIfMissing(migrated);
+  migrated = migrateSandyExcelProducts(migrated);
   migrated = migrateRepairModule(migrated, initial);
+
+  if (!migrated.seller_exchanges) {
+    migrated.seller_exchanges = [];
+  }
 
   migrated.repair_orders = (migrated.repair_orders || []).map((order) => ({
     ...order,

@@ -565,3 +565,40 @@ CREATE POLICY "categories_tenant" ON public.categories
 
 CREATE POLICY "presentations_tenant" ON public.presentations
   FOR ALL USING (tenant_id = public.get_my_tenant_id());
+
+-- -----------------------------------------------------------------------------
+-- Sandy: atributos por categoría, utilidad, envío, intercambios
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS attributes JSONB DEFAULT '{}'::jsonb;
+
+ALTER TABLE public.sales_details
+  ADD COLUMN IF NOT EXISTS cost DECIMAL(12, 2) DEFAULT 0;
+
+ALTER TABLE public.sales
+  ADD COLUMN IF NOT EXISTS subtotal DECIMAL(12, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS shipping_cost DECIMAL(12, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS requires_shipping BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS card_fee DECIMAL(12, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_profit DECIMAL(12, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS net_profit DECIMAL(12, 2) DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.seller_exchanges (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  from_user_id UUID NOT NULL REFERENCES auth.users(id),
+  from_branch_id UUID NOT NULL REFERENCES public.branches(id),
+  to_user_id UUID NOT NULL REFERENCES auth.users(id),
+  to_branch_id UUID NOT NULL REFERENCES public.branches(id),
+  type TEXT NOT NULL CHECK (type IN ('producto', 'efectivo')),
+  product_id UUID REFERENCES public.products(id),
+  quantity INTEGER,
+  amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.seller_exchanges ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "seller_exchanges_tenant" ON public.seller_exchanges
+  FOR ALL USING (tenant_id = public.get_my_tenant_id());

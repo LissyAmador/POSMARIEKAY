@@ -10,6 +10,15 @@ import { getDemoStore, updateDemoStore, uuid } from "./demo/store";
 import { DEMO_BRANCH_ID, DEMO_TENANT_ID } from "./demo/seed";
 import { resolveRole } from "./admin-api";
 import { supabase } from "@/src/utils/supabase/client";
+import { CARD_FEE_RATE } from "./category-attributes";
+import {
+  groupProfitByDay,
+  groupProfitByMonth,
+  groupProfitByProduct,
+  groupProfitByClient,
+  summarizeProfit,
+  calcSaleProfit,
+} from "./profit-utils";
 
 export const auth = {
   async getSession() {
@@ -409,22 +418,27 @@ export async function getInventoryProducts(tenantId, branchId) {
     .order("name");
 }
 
-export async function getPOSProducts(tenantId, branchId) {
+export async function getPOSProducts(tenantId, branchId, { includeOutOfStock = false } = {}) {
   if (isDemoMode()) {
     const { data } = await getInventoryProducts(tenantId, branchId);
-    return {
-      data: (data || []).filter((p) => p.stock > 0),
-      error: null,
-    };
+    const filtered = includeOutOfStock
+      ? data || []
+      : (data || []).filter((p) => p.stock > 0);
+    return { data: filtered, error: null };
   }
 
-  return supabase
+  let query = supabase
     .from("products")
     .select(`*, inventory!inner(stock, branch_id)`)
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
-    .gt("inventory.stock", 0)
     .order("name");
+
+  if (!includeOutOfStock) {
+    query = query.gt("inventory.stock", 0);
+  }
+
+  return query;
 }
 
 export async function saveProduct({
@@ -515,13 +529,17 @@ export async function processSale({
   items,
   branchId,
   userId,
+  requiresShipping = false,
+  shippingCost = 0,
 }) {
   if (isDemoMode()) {
     const store = getDemoStore();
-    const total = items.reduce(
+    const subtotal = items.reduce(
       (sum, item) => sum + Number(item.price) * item.quantity,
       0
     );
+    const shipping = requiresShipping ? Number(shippingCost) || 0 : 0;
+    const total = subtotal + shipping;
 
     for (const item of items) {
       const inv = store.inventory.find(
@@ -545,6 +563,23 @@ export async function processSale({
       }
     }
 
+    const detailsWithCost = items.map((item) => {
+      const product = store.products.find((p) => p.id === item.product_id);
+      return {
+        ...item,
+        cost: item.cost ?? product?.cost ?? 0,
+      };
+    });
+
+    const grossProfit = detailsWithCost.reduce(
+      (sum, item) => sum + (Number(item.price) - Number(item.cost)) * item.quantity,
+      0
+    );
+    const cardFee =
+      saleType === "contado" && paymentMethod === "tarjeta"
+        ? grossProfit * CARD_FEE_RATE
+        : 0;
+
     const saleId = uuid();
     const sale = {
       id: saleId,
@@ -553,6 +588,12 @@ export async function processSale({
       client_name: clientName || null,
       type: saleType,
       payment_method: paymentMethod || null,
+      subtotal,
+      shipping_cost: shipping,
+      requires_shipping: requiresShipping,
+      card_fee: cardFee,
+      gross_profit: grossProfit,
+      net_profit: grossProfit - cardFee,
       total,
       status: "activa",
       status_credit: saleType === "credito" ? "pendiente" : "pagado",
@@ -560,12 +601,13 @@ export async function processSale({
       created_at: new Date().toISOString(),
     };
 
-    const details = items.map((item) => ({
+    const details = detailsWithCost.map((item) => ({
       id: uuid(),
       sale_id: saleId,
       product_id: item.product_id,
       quantity: item.quantity,
       price: item.price,
+      cost: item.cost,
     }));
 
     updateDemoStore((data) => {
@@ -596,7 +638,15 @@ export async function processSale({
     });
 
     return {
-      data: { sale_id: saleId, total, type: saleType, payment_method: paymentMethod },
+      data: {
+        sale_id: saleId,
+        total,
+        subtotal,
+        shipping_cost: shipping,
+        card_fee: cardFee,
+        type: saleType,
+        payment_method: paymentMethod,
+      },
       error: null,
     };
   }
@@ -607,6 +657,8 @@ export async function processSale({
     p_payment_method: paymentMethod,
     p_due_date: saleType === "credito" ? dueDate : null,
     p_items: items,
+    p_requires_shipping: requiresShipping,
+    p_shipping_cost: shippingCost,
   });
 }
 
@@ -1045,6 +1097,248 @@ export async function getSalesReport(
       },
     },
     error: null,
+  };
+}
+
+function filterSalesByDate(sales, startDate, endDate) {
+  let filtered = [...sales];
+  if (startDate) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    filtered = filtered.filter((s) => new Date(s.created_at) >= start);
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    filtered = filtered.filter((s) => new Date(s.created_at) <= end);
+  }
+  return filtered;
+}
+
+function buildSalesWithDetails(store, sales) {
+  return sales.map((sale) => ({
+    sale,
+    details: store.sales_details
+      .filter((d) => d.sale_id === sale.id)
+      .map((d) => ({
+        ...d,
+        products: store.products.find((p) => p.id === d.product_id),
+      })),
+  }));
+}
+
+export async function getProfitReport(
+  branchId,
+  { startDate, endDate, groupBy = "day" } = {}
+) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    let sales = store.sales.filter(
+      (s) => s.branch_id === branchId && s.status !== "anulada"
+    );
+    sales = filterSalesByDate(sales, startDate, endDate);
+    const salesWithDetails = buildSalesWithDetails(store, sales);
+    const summary = summarizeProfit(salesWithDetails);
+
+    const groupFns = {
+      day: groupProfitByDay,
+      month: groupProfitByMonth,
+      product: () => groupProfitByProduct(salesWithDetails, store.products),
+      client: groupProfitByClient,
+    };
+
+    return {
+      data: {
+        summary,
+        groups: (groupFns[groupBy] || groupProfitByDay)(salesWithDetails),
+        groupBy,
+      },
+      error: null,
+    };
+  }
+
+  return {
+    data: null,
+    error: { message: "Reporte de utilidad disponible en modo demo." },
+  };
+}
+
+export async function getTenantSellers(tenantId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const profiles = (store.users_profiles || []).filter((p) => p.tenant_id === tenantId);
+    const sellers = profiles.map((profile) => {
+      const user = (store.demo_users || []).find((u) => u.id === profile.user_id);
+      const branch = store.branches.find((b) => b.id === profile.branch_id);
+      return {
+        user_id: profile.user_id,
+        branch_id: profile.branch_id,
+        name: user?.name || profile.name || "Vendedora",
+        branch_name: branch?.name || "—",
+        email: user?.email,
+      };
+    });
+    return { data: sellers, error: null };
+  }
+
+  return { data: [], error: null };
+}
+
+export async function getSellerExchanges(tenantId, branchId) {
+  if (isDemoMode()) {
+    const store = getDemoStore();
+    const exchanges = (store.seller_exchanges || [])
+      .filter(
+        (e) =>
+          e.tenant_id === tenantId &&
+          (e.from_branch_id === branchId || e.to_branch_id === branchId)
+      )
+      .map((e) => {
+        const product = store.products.find((p) => p.id === e.product_id);
+        const fromUser = (store.demo_users || []).find((u) => u.id === e.from_user_id);
+        const toUser = (store.demo_users || []).find((u) => u.id === e.to_user_id);
+        const fromBranch = store.branches.find((b) => b.id === e.from_branch_id);
+        const toBranch = store.branches.find((b) => b.id === e.to_branch_id);
+        return {
+          ...e,
+          product_name: product?.name,
+          from_user_name: fromUser?.name,
+          to_user_name: toUser?.name,
+          from_branch_name: fromBranch?.name,
+          to_branch_name: toBranch?.name,
+        };
+      })
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    return { data: exchanges, error: null };
+  }
+
+  return { data: [], error: null };
+}
+
+export async function processSellerExchange({
+  tenantId,
+  fromUserId,
+  fromBranchId,
+  toUserId,
+  toBranchId,
+  type,
+  productId,
+  quantity = 1,
+  cashAmount = 0,
+  notes = "",
+}) {
+  if (isDemoMode()) {
+    if (fromUserId === toUserId) {
+      return { error: { message: "Seleccione una vendedora distinta." } };
+    }
+
+    const store = getDemoStore();
+    const product = store.products.find((p) => p.id === productId);
+    let amount = 0;
+
+    if (type === "producto") {
+      if (!productId) {
+        return { error: { message: "Seleccione un producto." } };
+      }
+      const qty = parseInt(quantity, 10) || 0;
+      if (qty <= 0) {
+        return { error: { message: "Cantidad inválida." } };
+      }
+
+      const fromInv = store.inventory.find(
+        (i) => i.branch_id === fromBranchId && i.product_id === productId
+      );
+      if (!fromInv || fromInv.stock < qty) {
+        return { error: { message: "Stock insuficiente en la vendedora origen." } };
+      }
+
+      amount = Number(product?.cost || 0) * qty;
+
+      updateDemoStore((data) => {
+        let inventory = data.inventory.map((i) => {
+          if (i.branch_id === fromBranchId && i.product_id === productId) {
+            return { ...i, stock: i.stock - qty };
+          }
+          return i;
+        });
+
+        const toInv = inventory.find(
+          (i) => i.branch_id === toBranchId && i.product_id === productId
+        );
+        if (toInv) {
+          inventory = inventory.map((i) =>
+            i.id === toInv.id ? { ...i, stock: i.stock + qty } : i
+          );
+        } else {
+          inventory = [
+            ...inventory,
+            {
+              id: uuid(),
+              branch_id: toBranchId,
+              product_id: productId,
+              stock: qty,
+            },
+          ];
+        }
+
+        const exchange = {
+          id: uuid(),
+          tenant_id: tenantId,
+          from_user_id: fromUserId,
+          from_branch_id: fromBranchId,
+          to_user_id: toUserId,
+          to_branch_id: toBranchId,
+          type: "producto",
+          product_id: productId,
+          quantity: qty,
+          amount,
+          notes: notes.trim() || null,
+          created_at: new Date().toISOString(),
+        };
+
+        return {
+          ...data,
+          inventory,
+          seller_exchanges: [...(data.seller_exchanges || []), exchange],
+        };
+      });
+    } else if (type === "efectivo") {
+      amount = parseFloat(cashAmount) || 0;
+      if (amount <= 0) {
+        return { error: { message: "Ingrese un monto válido." } };
+      }
+
+      updateDemoStore((data) => {
+        const exchange = {
+          id: uuid(),
+          tenant_id: tenantId,
+          from_user_id: fromUserId,
+          from_branch_id: fromBranchId,
+          to_user_id: toUserId,
+          to_branch_id: toBranchId,
+          type: "efectivo",
+          product_id: null,
+          quantity: null,
+          amount,
+          notes: notes.trim() || null,
+          created_at: new Date().toISOString(),
+        };
+
+        return {
+          ...data,
+          seller_exchanges: [...(data.seller_exchanges || []), exchange],
+        };
+      });
+    } else {
+      return { error: { message: "Tipo de intercambio inválido." } };
+    }
+
+    return { data: { amount }, error: null };
+  }
+
+  return {
+    error: { message: "Intercambios disponibles en modo demo." },
   };
 }
 

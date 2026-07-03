@@ -1,4 +1,5 @@
 import { createChinoCellBundle, mergeBundles } from "./chino-cell-seed";
+import { createSandyBundle, mergeSandyBundle } from "./sandy-seed";
 
 export const DEMO_USER = {
   id: "d0000000-0000-4000-8000-000000000001",
@@ -277,5 +278,7 @@ export function createInitialDemoData() {
   };
 
   const chino = createChinoCellBundle(now);
-  return mergeBundles(base, chino);
+  const withChino = mergeBundles(base, chino);
+  const sandy = createSandyBundle(now);
+  return mergeSandyBundle(withChino, sandy);
 }

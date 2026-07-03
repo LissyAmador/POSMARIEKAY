@@ -31,6 +31,12 @@ const navItems = [
   },
   { href: "/dashboard/reportes", label: "Reportes", icon: "📈", perm: "reportes.ver" },
   {
+    href: "/dashboard/intercambios",
+    label: "Intercambios",
+    icon: "🔄",
+    perm: "intercambios.gestionar",
+  },
+  {
     href: "/dashboard/servicio-tecnico",
     label: "Servicio Técnico",
     icon: "🔧",

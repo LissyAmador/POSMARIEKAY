@@ -15,6 +15,11 @@ export const PERMISSION_CATALOG = [
     name: "Gestionar servicio técnico",
     module: "Servicio Técnico",
   },
+  {
+    key: "intercambios.gestionar",
+    name: "Intercambios entre vendedoras",
+    module: "Intercambios",
+  },
 ];
 
 export const ALL_PERMISSION_KEYS = PERMISSION_CATALOG.map((p) => p.key);

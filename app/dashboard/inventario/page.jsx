@@ -18,6 +18,13 @@ import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ProductImage from "@/src/components/ProductImage";
+import {
+  getCategoryAttributeSchema,
+  getEmptyAttributes,
+  validateCategoryAttributes,
+  formatAttributesSummary,
+  productMatchesSearch,
+} from "@/src/lib/category-attributes";
 
 const TABS = [
   { id: "productos", label: "Productos" },
@@ -33,6 +40,7 @@ const emptyProduct = {
   cost: "",
   stock: "",
   image_url: "",
+  attributes: {},
 };
 
 export default function InventarioPage() {
@@ -55,6 +63,7 @@ export default function InventarioPage() {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [saving, setSaving] = useState(false);
   const [filterCategory, setFilterCategory] = useState("all");
+  const [search, setSearch] = useState("");
 
   async function loadAll() {
     if (!profile?.tenant_id || !branch?.id) return;
@@ -89,10 +98,11 @@ export default function InventarioPage() {
   }, [form.name, editing, products]);
 
   const groupedProducts = useMemo(() => {
-    const filtered =
-      filterCategory === "all"
-        ? products
-        : products.filter((p) => p.category_id === filterCategory);
+    const filtered = products.filter((p) => {
+      const matchesCategory =
+        filterCategory === "all" || p.category_id === filterCategory;
+      return matchesCategory && productMatchesSearch(p, search);
+    });
 
     const groups = {};
     filtered.forEach((product) => {
@@ -101,14 +111,17 @@ export default function InventarioPage() {
       groups[key].push(product);
     });
     return groups;
-  }, [products, filterCategory]);
+  }, [products, filterCategory, search]);
 
   function openCreate() {
     setEditing(null);
+    const catId = categories[0]?.id || "";
+    const catName = categories.find((c) => c.id === catId)?.name || "";
     setForm({
       ...emptyProduct,
-      category_id: categories[0]?.id || "",
+      category_id: catId,
       presentation_id: presentations[0]?.id || "",
+      attributes: getEmptyAttributes(catName),
     });
     setPreviewCodes({ sku: "", barcode: "" });
     setShowForm(true);
@@ -124,6 +137,7 @@ export default function InventarioPage() {
       cost: String(product.cost),
       stock: String(product.stock),
       image_url: product.image_url || "",
+      attributes: product.attributes || {},
     });
     setPreviewCodes({ sku: product.sku || "", barcode: product.barcode || "" });
     setShowForm(true);
@@ -149,6 +163,13 @@ export default function InventarioPage() {
       return;
     }
 
+    const categoryName = categories.find((c) => c.id === form.category_id)?.name;
+    const attrCheck = validateCategoryAttributes(categoryName, form.attributes);
+    if (!attrCheck.valid) {
+      setMessage({ type: "error", text: attrCheck.message });
+      return;
+    }
+
     setSaving(true);
     setMessage({ type: "", text: "" });
 
@@ -164,6 +185,7 @@ export default function InventarioPage() {
       cost: parseFloat(form.cost) || 0,
       image_url: form.image_url || null,
       currency,
+      attributes: form.attributes || {},
     };
     const stock = parseInt(form.stock, 10) || 0;
 
@@ -319,7 +341,14 @@ export default function InventarioPage() {
             />
           )}
 
-          <div className="mb-4">
+          <div className="mb-4 flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Buscar producto, SKU o atributos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
@@ -332,6 +361,16 @@ export default function InventarioPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterCategory("all");
+                setSearch("");
+              }}
+              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700"
+            >
+              Ver todo
+            </button>
           </div>
 
           {loading ? (
@@ -358,7 +397,9 @@ export default function InventarioPage() {
                         <th className="px-4 py-3">Producto</th>
                         <th className="px-4 py-3">Presentación</th>
                         <th className="px-4 py-3">SKU</th>
-                        <th className="px-4 py-3">Precio</th>
+                        <th className="px-4 py-3">Precio venta</th>
+                        <th className="px-4 py-3">Costo</th>
+                        <th className="px-4 py-3">Atributos</th>
                         <th className="px-4 py-3">Stock</th>
                         <th className="px-4 py-3">Acciones</th>
                       </tr>
@@ -385,6 +426,12 @@ export default function InventarioPage() {
                             {product.sku}
                           </td>
                           <td className="px-4 py-3">{formatMoney(product.price)}</td>
+                          <td className="px-4 py-3 text-slate-500">
+                            {formatMoney(product.cost)}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {formatAttributesSummary(product.category_name, product.attributes) || "—"}
+                          </td>
                           <td className="px-4 py-3">
                             <span
                               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -523,6 +570,25 @@ function ProductForm({
   onSubmit,
   onCancel,
 }) {
+  const selectedCategory = categories.find((c) => c.id === form.category_id);
+  const attributeSchema = getCategoryAttributeSchema(selectedCategory?.name);
+
+  function handleCategoryChange(categoryId) {
+    const cat = categories.find((c) => c.id === categoryId);
+    setForm({
+      ...form,
+      category_id: categoryId,
+      attributes: getEmptyAttributes(cat?.name),
+    });
+  }
+
+  function setAttribute(key, value) {
+    setForm((prev) => ({
+      ...prev,
+      attributes: { ...prev.attributes, [key]: value },
+    }));
+  }
+
   return (
     <div className="mb-8 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <h2 className="mb-4 text-lg font-semibold">
@@ -553,7 +619,7 @@ function ProductForm({
           <select
             required
             value={form.category_id}
-            onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+            onChange={(e) => handleCategoryChange(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2"
           >
             <option value="">Seleccionar...</option>
@@ -605,18 +671,56 @@ function ProductForm({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium">Precio ({currencyConfig.symbol})</label>
+          <label className="mb-1 block text-sm font-medium">Precio de venta ({currencyConfig.symbol})</label>
           <input type="number" min="0" step="0.01" required value={form.price}
             onChange={(e) => setForm({ ...form, price: e.target.value })}
             className="w-full rounded-lg border border-slate-300 px-3 py-2" />
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium">Costo ({currencyConfig.symbol})</label>
-          <input type="number" min="0" step="0.01" value={form.cost}
+          <label className="mb-1 block text-sm font-medium">Precio de costo ({currencyConfig.symbol})</label>
+          <input type="number" min="0" step="0.01" required value={form.cost}
             onChange={(e) => setForm({ ...form, cost: e.target.value })}
             className="w-full rounded-lg border border-slate-300 px-3 py-2" />
         </div>
+
+        {attributeSchema.length > 0 && (
+          <div className="sm:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+            <p className="mb-3 text-sm font-semibold text-indigo-800">
+              Atributos — {selectedCategory?.name}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {attributeSchema.map((field) => (
+                <div key={field.key}>
+                  <label className="mb-1 block text-sm font-medium">
+                    {field.label}{field.required ? " *" : ""}
+                  </label>
+                  {field.type === "select" ? (
+                    <select
+                      required={field.required}
+                      value={form.attributes?.[field.key] || ""}
+                      onChange={(e) => setAttribute(field.key, e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {field.options.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type === "date" ? "date" : "text"}
+                      required={field.required}
+                      value={form.attributes?.[field.key] || ""}
+                      onChange={(e) => setAttribute(field.key, e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="mb-1 block text-sm font-medium">Stock ({branch?.name})</label>

@@ -12,6 +12,11 @@ import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ProductImage from "@/src/components/ProductImage";
 import Receipt from "@/src/components/Receipt";
+import {
+  CARD_FEE_RATE,
+  productMatchesSearch,
+  formatAttributesSummary,
+} from "@/src/lib/category-attributes";
 
 export default function POSPage() {
   const { profile, tenant } = useUserProfile();
@@ -30,12 +35,15 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState(null);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [showAllAvailable, setShowAllAvailable] = useState(true);
+  const [requiresShipping, setRequiresShipping] = useState(false);
+  const [shippingCost, setShippingCost] = useState("");
 
   async function loadProducts() {
     if (!profile?.tenant_id || !branch?.id) return;
 
     const [prodRes, catRes] = await Promise.all([
-      getPOSProducts(profile.tenant_id, branch.id),
+      getPOSProducts(profile.tenant_id, branch.id, { includeOutOfStock: false }),
       getCategories(profile.tenant_id),
     ]);
 
@@ -48,17 +56,16 @@ export default function POSPage() {
     loadProducts();
   }, [profile?.tenant_id, branch?.id]);
 
-  const filteredProducts = products.filter(
-    (p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
-        (p.barcode && p.barcode.includes(search));
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch = productMatchesSearch(p, search);
       const matchesCategory =
-        filterCategory === "all" || p.category_id === filterCategory;
-      return matchesSearch && matchesCategory;
-    }
-  );
+        !showAllAvailable && filterCategory !== "all"
+          ? p.category_id === filterCategory
+          : filterCategory === "all" || p.category_id === filterCategory;
+      return matchesSearch && matchesCategory && p.stock > 0;
+    });
+  }, [products, search, filterCategory, showAllAvailable]);
 
   const groupedProducts = useMemo(() => {
     const groups = {};
@@ -87,9 +94,12 @@ export default function POSPage() {
           product_id: product.id,
           name: product.name,
           price: Number(product.price),
+          cost: Number(product.cost || 0),
           quantity: 1,
           maxStock: product.stock,
           image_url: product.image_url,
+          category_name: product.category_name,
+          attributes: product.attributes,
         },
       ];
     });
@@ -113,10 +123,24 @@ export default function POSPage() {
     setCart((prev) => prev.filter((item) => item.product_id !== productId));
   }
 
-  const cartTotal = cart.reduce(
+  const cartSubtotal = cart.reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
   );
+
+  const cartCost = cart.reduce(
+    (sum, item) => sum + (item.cost || 0) * item.quantity,
+    0
+  );
+
+  const grossProfit = cartSubtotal - cartCost;
+  const cardFee =
+    saleType === "contado" && paymentMethod === "tarjeta"
+      ? grossProfit * CARD_FEE_RATE
+      : 0;
+  const shipping = requiresShipping ? parseFloat(shippingCost) || 0 : 0;
+  const cartTotal = cartSubtotal + shipping;
+  const netProfit = grossProfit - cardFee;
 
   async function processSale() {
     if (cart.length === 0) {
@@ -136,6 +160,7 @@ export default function POSPage() {
       product_id: item.product_id,
       quantity: item.quantity,
       price: item.price,
+      cost: item.cost,
     }));
 
     const { data, error } = await processSaleApi({
@@ -146,6 +171,8 @@ export default function POSPage() {
       items,
       branchId: branch.id,
       userId: profile.user_id,
+      requiresShipping,
+      shippingCost: shipping,
     });
 
     if (error) {
@@ -167,6 +194,8 @@ export default function POSPage() {
     setCart([]);
     setClientName("");
     setDueDate("");
+    setRequiresShipping(false);
+    setShippingCost("");
     setProcessing(false);
     await loadProducts();
   }
@@ -200,7 +229,7 @@ export default function POSPage() {
           <div className="mb-4 flex flex-wrap gap-2">
             <input
               type="text"
-              placeholder="Buscar por nombre, SKU o código de barras..."
+              placeholder="Buscar producto, SKU, tono, talla, color..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
@@ -217,6 +246,21 @@ export default function POSPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAllAvailable(true);
+                setFilterCategory("all");
+                setSearch("");
+              }}
+              className={`rounded-lg px-3 py-2.5 text-sm font-medium ${
+                showAllAvailable && filterCategory === "all" && !search
+                  ? "bg-indigo-600 text-white"
+                  : "border border-indigo-200 bg-indigo-50 text-indigo-700"
+              }`}
+            >
+              Ver todo disponible
+            </button>
           </div>
 
           {loading ? (
@@ -248,6 +292,11 @@ export default function POSPage() {
                       />
                       <p className="font-semibold text-slate-900">{product.name}</p>
                       <p className="text-xs text-slate-500">{product.presentation_name}</p>
+                      {formatAttributesSummary(product.category_name, product.attributes) && (
+                        <p className="text-xs text-indigo-600">
+                          {formatAttributesSummary(product.category_name, product.attributes)}
+                        </p>
+                      )}
                       <p className="mt-1 text-lg font-bold text-indigo-600">
                         {formatMoney(product.price)}
                       </p>
@@ -311,8 +360,30 @@ export default function POSPage() {
             </ul>
           )}
 
-          <div className="mt-4 border-t border-slate-200 pt-4">
-            <div className="flex justify-between text-lg font-bold">
+          <div className="mt-4 border-t border-slate-200 pt-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Subtotal</span>
+              <span>{formatMoney(cartSubtotal)}</span>
+            </div>
+            {requiresShipping && shipping > 0 && (
+              <div className="flex justify-between text-slate-500">
+                <span>Envío (clienta ↔ vendedora)</span>
+                <span>{formatMoney(shipping)}</span>
+              </div>
+            )}
+            {cardFee > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>Comisión tarjeta (5% ganancia)</span>
+                <span>−{formatMoney(cardFee)}</span>
+              </div>
+            )}
+            {cart.length > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>Ganancia estimada</span>
+                <span>{formatMoney(netProfit)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-lg font-bold pt-1">
               <span>Total</span>
               <span className="text-indigo-600">{formatMoney(cartTotal)}</span>
             </div>
@@ -353,10 +424,41 @@ export default function POSPage() {
                 >
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
-                  <option value="tarjeta">Tarjeta</option>
+                  <option value="tarjeta">Tarjeta (descuenta 5% de ganancia)</option>
                 </select>
               </div>
             )}
+
+            <div className="rounded-lg border border-slate-200 p-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={requiresShipping}
+                  onChange={(e) => setRequiresShipping(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                ¿Requiere envío?
+              </label>
+              <p className="mt-1 text-xs text-slate-500">
+                El envío se acuerda entre la clienta y la vendedora según ubicación.
+              </p>
+              {requiresShipping && (
+                <div className="mt-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Costo de envío
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={shippingCost}
+                    onChange={(e) => setShippingCost(e.target.value)}
+                    placeholder="Ej. 25.00"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+            </div>
 
             {saleType === "credito" && (
               <div>
