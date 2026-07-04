@@ -7,6 +7,17 @@ import {
 import { mergeSandyIfMissing, migrateSandyExcelProducts } from "./sandy-seed";
 
 const STORAGE_KEY = "pos-demo-data";
+const CURRENT_STORE_VERSION = 3;
+
+function ensureStoreShape(migrated) {
+  if (!migrated.seller_exchanges) {
+    migrated.seller_exchanges = [];
+  }
+  if (!migrated.repair_orders) {
+    migrated.repair_orders = [];
+  }
+  return migrated;
+}
 
 function migrateRepairModule(migrated, initial) {
   const existingTechIds = new Set((migrated.technicians || []).map((t) => t.id));
@@ -33,7 +44,7 @@ function migrateRepairModule(migrated, initial) {
   return migrated;
 }
 
-function migrateStore(data) {
+function runFullMigration(data) {
   const initial = createInitialDemoData();
   let migrated = { ...data };
 
@@ -74,22 +85,30 @@ function migrateStore(data) {
     }
   }
 
-  migrated.products = (migrated.products || []).map((product) => ({
-    ...product,
-    category_id: product.category_id || initial.categories[0]?.id || null,
-    presentation_id: product.presentation_id || initial.presentations[0]?.id || null,
-    image_url: product.image_url || null,
-    attributes: product.attributes || {},
-  }));
+  let productsChanged = false;
+  migrated.products = (migrated.products || []).map((product) => {
+    const next = {
+      ...product,
+      category_id: product.category_id || initial.categories[0]?.id || null,
+      presentation_id: product.presentation_id || initial.presentations[0]?.id || null,
+      image_url: product.image_url || null,
+      attributes: product.attributes || {},
+    };
+    if (
+      next.category_id !== product.category_id ||
+      next.presentation_id !== product.presentation_id ||
+      next.image_url !== product.image_url ||
+      product.attributes !== next.attributes
+    ) {
+      productsChanged = true;
+    }
+    return next;
+  });
 
   migrated = mergeChinoCellIfMissing(migrated, initial);
   migrated = mergeSandyIfMissing(migrated);
   migrated = migrateSandyExcelProducts(migrated);
   migrated = migrateRepairModule(migrated, initial);
-
-  if (!migrated.seller_exchanges) {
-    migrated.seller_exchanges = [];
-  }
 
   migrated.repair_orders = (migrated.repair_orders || []).map((order) => ({
     ...order,
@@ -99,7 +118,20 @@ function migrateStore(data) {
     sale_id: order.sale_id ?? null,
   }));
 
-  return migrated;
+  migrated._version = CURRENT_STORE_VERSION;
+  migrated._productsNormalized = productsChanged || migrated._productsNormalized;
+
+  return ensureStoreShape(migrated);
+}
+
+function migrateStore(data) {
+  const version = data?._version || 0;
+
+  if (version >= CURRENT_STORE_VERSION) {
+    return ensureStoreShape({ ...data });
+  }
+
+  return runFullMigration(data);
 }
 
 function readStore() {
@@ -107,14 +139,18 @@ function readStore() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     const initial = createInitialDemoData();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
-    return initial;
+    const seeded = { ...initial, _version: CURRENT_STORE_VERSION };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+    return seeded;
   }
+
   const parsed = JSON.parse(raw);
   const migrated = migrateStore(parsed);
-  if (JSON.stringify(parsed) !== JSON.stringify(migrated)) {
+
+  if ((parsed._version || 0) < CURRENT_STORE_VERSION) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
   }
+
   return migrated;
 }
 
@@ -124,8 +160,9 @@ function writeStore(data) {
 
 export function resetDemoStore() {
   const initial = createInitialDemoData();
-  writeStore(initial);
-  return initial;
+  const seeded = { ...initial, _version: CURRENT_STORE_VERSION };
+  writeStore(seeded);
+  return seeded;
 }
 
 export function getDemoStore() {

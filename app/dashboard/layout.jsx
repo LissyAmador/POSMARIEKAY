@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
 import BranchSelector from "@/src/components/BranchSelector";
+import ExpirationAlertBanner from "@/src/components/ExpirationAlertBanner";
 import { CurrencyProvider } from "@/src/hooks/useCurrency";
 import { BranchProvider } from "@/src/hooks/useBranchContext";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
@@ -68,6 +69,7 @@ export default function DashboardLayout({ children }) {
           <Sidebar tenant={tenant} profile={profile} />
           <main className="ml-64 min-h-screen p-8">
             <BranchSelector />
+            <ExpirationAlertBanner />
             {children}
           </main>
         </div>

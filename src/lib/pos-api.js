@@ -19,6 +19,7 @@ import {
   summarizeProfit,
   calcSaleProfit,
 } from "./profit-utils";
+import { getMakeupExpirationAlerts } from "./expiry-utils";
 
 export const auth = {
   async getSession() {
@@ -416,6 +417,14 @@ export async function getInventoryProducts(tenantId, branchId) {
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
     .order("name");
+}
+
+export async function getExpirationAlerts(tenantId, branchId) {
+  const { data: products, error } = await getInventoryProducts(tenantId, branchId);
+  if (error) return { data: [], error };
+
+  const alerts = getMakeupExpirationAlerts(products || [], { onlyInStock: true });
+  return { data: alerts, error: null };
 }
 
 export async function getPOSProducts(tenantId, branchId, { includeOutOfStock = false } = {}) {

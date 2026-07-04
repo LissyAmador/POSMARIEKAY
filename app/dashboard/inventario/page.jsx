@@ -25,6 +25,13 @@ import {
   formatAttributesSummary,
   productMatchesSearch,
 } from "@/src/lib/category-attributes";
+import {
+  isMakeupProduct,
+  getExpiryStatus,
+  formatExpiryDate,
+  EXPIRY_STATUS_LABELS,
+  EXPIRY_STATUS_STYLES,
+} from "@/src/lib/expiry-utils";
 
 const TABS = [
   { id: "productos", label: "Productos" },
@@ -64,6 +71,7 @@ export default function InventarioPage() {
   const [saving, setSaving] = useState(false);
   const [filterCategory, setFilterCategory] = useState("all");
   const [search, setSearch] = useState("");
+  const [expiryFilter, setExpiryFilter] = useState("all");
 
   async function loadAll() {
     if (!profile?.tenant_id || !branch?.id) return;
@@ -101,7 +109,14 @@ export default function InventarioPage() {
     const filtered = products.filter((p) => {
       const matchesCategory =
         filterCategory === "all" || p.category_id === filterCategory;
-      return matchesCategory && productMatchesSearch(p, search);
+      const matchesSearch = productMatchesSearch(p, search);
+      const expiryStatus = getExpiryStatus(p);
+      const matchesExpiry =
+        expiryFilter === "all" ||
+        (expiryFilter === "expiring" &&
+          (expiryStatus === "expiring_soon" || expiryStatus === "expired")) ||
+        (expiryFilter === "makeup" && isMakeupProduct(p));
+      return matchesCategory && matchesSearch && matchesExpiry;
     });
 
     const groups = {};
@@ -111,7 +126,7 @@ export default function InventarioPage() {
       groups[key].push(product);
     });
     return groups;
-  }, [products, filterCategory, search]);
+  }, [products, filterCategory, search, expiryFilter]);
 
   function openCreate() {
     setEditing(null);
@@ -366,11 +381,21 @@ export default function InventarioPage() {
               onClick={() => {
                 setFilterCategory("all");
                 setSearch("");
+                setExpiryFilter("all");
               }}
               className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700"
             >
               Ver todo
             </button>
+            <select
+              value={expiryFilter}
+              onChange={(e) => setExpiryFilter(e.target.value)}
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            >
+              <option value="all">Todos los vencimientos</option>
+              <option value="expiring">Próximos a vencer / vencidos</option>
+              <option value="makeup">Solo maquillaje</option>
+            </select>
           </div>
 
           {loading ? (
@@ -400,12 +425,15 @@ export default function InventarioPage() {
                         <th className="px-4 py-3">Precio venta</th>
                         <th className="px-4 py-3">Costo</th>
                         <th className="px-4 py-3">Atributos</th>
+                        <th className="px-4 py-3">Vencimiento</th>
                         <th className="px-4 py-3">Stock</th>
                         <th className="px-4 py-3">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {items.map((product) => (
+                      {items.map((product) => {
+                        const expiryStatus = getExpiryStatus(product);
+                        return (
                         <tr key={product.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
@@ -414,9 +442,21 @@ export default function InventarioPage() {
                                 name={product.name}
                                 size="sm"
                               />
-                              <span className="font-medium text-slate-900">
-                                {product.name}
-                              </span>
+                              <div>
+                                <span className="font-medium text-slate-900">
+                                  {product.name}
+                                </span>
+                                {expiryStatus === "expiring_soon" && (
+                                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                                    Por vencer
+                                  </span>
+                                )}
+                                {expiryStatus === "expired" && (
+                                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                                    Vencido
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-slate-500">
@@ -431,6 +471,20 @@ export default function InventarioPage() {
                           </td>
                           <td className="px-4 py-3 text-xs text-slate-500">
                             {formatAttributesSummary(product.category_name, product.attributes) || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isMakeupProduct(product) ? (
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${EXPIRY_STATUS_STYLES[expiryStatus] || EXPIRY_STATUS_STYLES.none}`}
+                              >
+                                {formatExpiryDate(product.attributes?.vencimiento)}
+                                {expiryStatus !== "none" && expiryStatus !== "ok" && (
+                                  <span className="ml-1">({EXPIRY_STATUS_LABELS[expiryStatus]})</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -467,7 +521,8 @@ export default function InventarioPage() {
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -572,6 +627,7 @@ function ProductForm({
 }) {
   const selectedCategory = categories.find((c) => c.id === form.category_id);
   const attributeSchema = getCategoryAttributeSchema(selectedCategory?.name);
+  const isMakeupLine = /maquillaje/i.test(form.attributes?.linea || "");
 
   function handleCategoryChange(categoryId) {
     const cat = categories.find((c) => c.id === categoryId);
@@ -690,14 +746,17 @@ function ProductForm({
               Atributos — {selectedCategory?.name}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              {attributeSchema.map((field) => (
+              {attributeSchema.map((field) => {
+                const fieldRequired =
+                  field.required || (field.makeupRequired && isMakeupLine);
+                return (
                 <div key={field.key}>
                   <label className="mb-1 block text-sm font-medium">
-                    {field.label}{field.required ? " *" : ""}
+                    {field.label}{fieldRequired ? " *" : ""}
                   </label>
                   {field.type === "select" ? (
                     <select
-                      required={field.required}
+                      required={fieldRequired}
                       value={form.attributes?.[field.key] || ""}
                       onChange={(e) => setAttribute(field.key, e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2"
@@ -710,14 +769,18 @@ function ProductForm({
                   ) : (
                     <input
                       type={field.type === "date" ? "date" : "text"}
-                      required={field.required}
+                      required={fieldRequired}
                       value={form.attributes?.[field.key] || ""}
                       onChange={(e) => setAttribute(field.key, e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2"
                     />
                   )}
+                  {field.help && (field.key !== "vencimiento" || isMakeupLine) && (
+                    <p className="mt-1 text-xs text-indigo-600">{field.help}</p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

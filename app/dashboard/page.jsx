@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDashboardStats } from "@/src/lib/pos-api";
+import { getDashboardStats, getExpirationAlerts } from "@/src/lib/pos-api";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 
 export default function DashboardPage() {
-  const { tenant } = useUserProfile();
+  const { tenant, profile } = useUserProfile();
   const { activeBranch: branch } = useBranch();
   const { formatMoney } = useCurrency();
   const [stats, setStats] = useState({
@@ -18,18 +18,23 @@ export default function DashboardPage() {
     openRegister: false,
   });
   const [loading, setLoading] = useState(true);
+  const [expiryAlerts, setExpiryAlerts] = useState([]);
 
   useEffect(() => {
-    if (!branch?.id) return;
+    if (!branch?.id || !profile?.tenant_id) return;
 
     async function loadStats() {
-      const data = await getDashboardStats(branch.id);
-      setStats(data);
+      const [statsData, alertsRes] = await Promise.all([
+        getDashboardStats(branch.id),
+        getExpirationAlerts(profile.tenant_id, branch.id),
+      ]);
+      setStats(statsData);
+      setExpiryAlerts(alertsRes.data || []);
       setLoading(false);
     }
 
     loadStats();
-  }, [branch?.id]);
+  }, [branch?.id, profile?.tenant_id]);
 
   const cards = [
     { label: "Productos en inventario", value: stats.products, color: "bg-blue-500" },
@@ -37,6 +42,9 @@ export default function DashboardPage() {
     { label: "Ingresos hoy", value: formatMoney(stats.revenueToday), color: "bg-violet-500" },
     { label: "Créditos pendientes", value: stats.pendingCredits, color: "bg-amber-500" },
   ];
+
+  const expiringSoon = expiryAlerts.filter((a) => a.status === "expiring_soon");
+  const expired = expiryAlerts.filter((a) => a.status === "expired");
 
   return (
     <div>
@@ -80,6 +88,26 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && (expiringSoon.length > 0 || expired.length > 0) && (
+        <div className="mt-6 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">
+            Alertas de vencimiento — maquillaje
+          </h2>
+          <div className="space-y-2 text-sm">
+            {expired.map((alert) => (
+              <p key={alert.product.id} className="text-red-700">
+                ⛔ {alert.message}
+              </p>
+            ))}
+            {expiringSoon.map((alert) => (
+              <p key={alert.product.id} className="text-amber-800">
+                🔔 {alert.message}
+              </p>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -3,7 +3,14 @@
 export const CATEGORY_ATTRIBUTE_SCHEMAS = {
   "MARY KAY": [
     { key: "tono", label: "Tono", type: "text", required: true },
-    { key: "vencimiento", label: "Vencimiento", type: "date", required: true },
+    {
+      key: "vencimiento",
+      label: "Fecha de vencimiento",
+      type: "date",
+      required: false,
+      makeupRequired: true,
+      help: "Obligatoria en maquillaje. Cada producto tiene su propia fecha.",
+    },
     { key: "linea", label: "Línea", type: "text" },
   ],
   "ROPA DE NIÑOS": [
@@ -52,9 +59,17 @@ export function getEmptyAttributes(categoryName) {
 
 export function validateCategoryAttributes(categoryName, attributes = {}) {
   const schema = getCategoryAttributeSchema(categoryName);
+  const linea = String(attributes?.linea || "");
+  const isMakeupLine = /maquillaje/i.test(linea);
+
   const missing = schema
-    .filter((f) => f.required && !String(attributes[f.key] ?? "").trim())
+    .filter((f) => {
+      if (f.key === "vencimiento" && isMakeupLine) return !String(attributes[f.key] ?? "").trim();
+      if (f.key === "vencimiento" && !isMakeupLine) return false;
+      return f.required && !String(attributes[f.key] ?? "").trim();
+    })
     .map((f) => f.label);
+
   if (missing.length) {
     return { valid: false, message: `Complete: ${missing.join(", ")}` };
   }

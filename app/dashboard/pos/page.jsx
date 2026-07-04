@@ -17,6 +17,11 @@ import {
   productMatchesSearch,
   formatAttributesSummary,
 } from "@/src/lib/category-attributes";
+import {
+  getExpiryStatus,
+  getExpiryAlertMessage,
+  formatExpiryDate,
+} from "@/src/lib/expiry-utils";
 
 export default function POSPage() {
   const { profile, tenant } = useUserProfile();
@@ -78,6 +83,21 @@ export default function POSPage() {
   }, [filteredProducts]);
 
   function addToCart(product) {
+    const expiryStatus = getExpiryStatus(product);
+    if (expiryStatus === "expired") {
+      setMessage({
+        type: "error",
+        text: getExpiryAlertMessage(product) || "Producto de maquillaje vencido.",
+      });
+      return;
+    }
+    if (expiryStatus === "expiring_soon") {
+      setMessage({
+        type: "warning",
+        text: `⚠️ ${getExpiryAlertMessage(product)}`,
+      });
+    }
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product_id === product.id);
       if (existing) {
@@ -217,6 +237,8 @@ export default function POSPage() {
           className={`mb-4 rounded-lg px-4 py-3 text-sm ${
             message.type === "error"
               ? "bg-red-50 text-red-700"
+              : message.type === "warning"
+                ? "bg-amber-50 text-amber-800"
               : "bg-emerald-50 text-emerald-700"
           }`}
         >
@@ -295,6 +317,11 @@ export default function POSPage() {
                       {formatAttributesSummary(product.category_name, product.attributes) && (
                         <p className="text-xs text-indigo-600">
                           {formatAttributesSummary(product.category_name, product.attributes)}
+                        </p>
+                      )}
+                      {getExpiryStatus(product) === "expiring_soon" && (
+                        <p className="text-xs font-medium text-amber-700">
+                          Vence {formatExpiryDate(product.attributes?.vencimiento)}
                         </p>
                       )}
                       <p className="mt-1 text-lg font-bold text-indigo-600">
