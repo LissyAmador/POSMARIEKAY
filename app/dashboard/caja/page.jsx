@@ -24,30 +24,25 @@ export default function CajaPage() {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [expiryAlerts, setExpiryAlerts] = useState([]);
 
-  async function loadExpiryAlerts() {
-    if (!profile?.tenant_id || !branch?.id) return;
-    const { data } = await getExpirationAlerts(profile.tenant_id, branch.id);
-    setExpiryAlerts(data || []);
-  }
-
-  async function loadData() {
+  async function loadCashRegister() {
     if (!branch?.id) return;
 
     const { open, closed } = await getCashRegisterData(branch.id);
     setOpenRegister(open);
     setHistory(closed || []);
     setLoading(false);
-
-    if (open) {
-      await loadExpiryAlerts();
-    }
   }
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 5000);
+    loadCashRegister();
+    if (profile?.tenant_id && branch?.id) {
+      getExpirationAlerts(profile.tenant_id, branch.id).then(({ data }) => {
+        setExpiryAlerts(data || []);
+      });
+    }
+    const interval = setInterval(loadCashRegister, 5000);
     return () => clearInterval(interval);
-  }, [branch?.id]);
+  }, [branch?.id, profile?.tenant_id]);
 
   async function handleOpenRegister() {
     const amount = parseFloat(initialBalance);
@@ -78,7 +73,7 @@ export default function CajaPage() {
             ? `Caja abierta. Revise ${alerts.length} alerta(s) de vencimiento abajo.`
             : "Caja abierta correctamente.",
       });
-      await loadData();
+      await loadCashRegister();
     }
     setActionLoading(false);
   }
@@ -104,7 +99,7 @@ export default function CajaPage() {
         type: "success",
         text: `Caja cerrada. Monto esperado: ${formatMoney(expected)}`,
       });
-      await loadData();
+      await loadCashRegister();
     }
     setActionLoading(false);
   }
