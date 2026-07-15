@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getExpirationAlerts } from "@/src/lib/pos-api";
+import { fetchExpirationAlertsCached } from "@/src/lib/expiry-alerts-cache";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import ExpirationAlertsList from "@/src/components/ExpirationAlertsList";
@@ -17,7 +18,11 @@ export default function ExpirationAlertBanner() {
 
     async function load() {
       setLoading(true);
-      const { data } = await getExpirationAlerts(profile.tenant_id, branch.id);
+      const { data } = await fetchExpirationAlertsCached(
+        profile.tenant_id,
+        branch.id,
+        getExpirationAlerts
+      );
       setAlerts(data || []);
       setLoading(false);
     }

@@ -11,6 +11,10 @@ import { useUserProfile, formatDate } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
 import ExpirationAlertsList from "@/src/components/ExpirationAlertsList";
+import {
+  fetchExpirationAlertsCached,
+  invalidateExpirationAlertsCache,
+} from "@/src/lib/expiry-alerts-cache";
 
 export default function CajaPage() {
   const { profile } = useUserProfile();
@@ -36,9 +40,11 @@ export default function CajaPage() {
   useEffect(() => {
     loadCashRegister();
     if (profile?.tenant_id && branch?.id) {
-      getExpirationAlerts(profile.tenant_id, branch.id).then(({ data }) => {
-        setExpiryAlerts(data || []);
-      });
+      fetchExpirationAlertsCached(
+        profile.tenant_id,
+        branch.id,
+        getExpirationAlerts
+      ).then(({ data }) => setExpiryAlerts(data || []));
     }
     const interval = setInterval(loadCashRegister, 30000);
     return () => clearInterval(interval);
@@ -64,7 +70,12 @@ export default function CajaPage() {
       setMessage({ type: "error", text: error.message });
     } else {
       setInitialBalance("");
-      const { data: alerts } = await getExpirationAlerts(profile.tenant_id, branch.id);
+      invalidateExpirationAlertsCache(profile.tenant_id, branch.id);
+      const { data: alerts } = await fetchExpirationAlertsCached(
+        profile.tenant_id,
+        branch.id,
+        getExpirationAlerts
+      );
       setExpiryAlerts(alerts || []);
       setMessage({
         type: "success",
