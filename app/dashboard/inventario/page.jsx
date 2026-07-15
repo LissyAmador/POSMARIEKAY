@@ -13,11 +13,9 @@ import {
   deletePresentation,
 } from "@/src/lib/pos-api";
 import { generateSku, generateBarcode } from "@/src/lib/product-codes";
-import { readImageAsDataUrl } from "@/src/lib/image-utils";
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
-import ProductImage from "@/src/components/ProductImage";
 import {
   getCategoryAttributeSchema,
   getEmptyAttributes,
@@ -26,7 +24,7 @@ import {
   productMatchesSearch,
 } from "@/src/lib/category-attributes";
 import {
-  isMakeupProduct,
+  hasExpirationDate,
   getExpiryStatus,
   formatExpiryDate,
   EXPIRY_STATUS_LABELS,
@@ -46,7 +44,6 @@ const emptyProduct = {
   price: "",
   cost: "",
   stock: "",
-  image_url: "",
   attributes: {},
 };
 
@@ -115,7 +112,7 @@ export default function InventarioPage() {
         expiryFilter === "all" ||
         (expiryFilter === "expiring" &&
           (expiryStatus === "expiring_soon" || expiryStatus === "expired")) ||
-        (expiryFilter === "makeup" && isMakeupProduct(p));
+        (expiryFilter === "with_date" && hasExpirationDate(p));
       return matchesCategory && matchesSearch && matchesExpiry;
     });
 
@@ -151,20 +148,10 @@ export default function InventarioPage() {
       price: String(product.price),
       cost: String(product.cost),
       stock: String(product.stock),
-      image_url: product.image_url || "",
       attributes: product.attributes || {},
     });
     setPreviewCodes({ sku: product.sku || "", barcode: product.barcode || "" });
     setShowForm(true);
-  }
-
-  async function handleImageChange(e) {
-    try {
-      const dataUrl = await readImageAsDataUrl(e.target.files?.[0]);
-      setForm((prev) => ({ ...prev, image_url: dataUrl }));
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
-    }
   }
 
   async function handleSaveProduct(e) {
@@ -198,7 +185,6 @@ export default function InventarioPage() {
       presentation_id: form.presentation_id,
       price: parseFloat(form.price) || 0,
       cost: parseFloat(form.cost) || 0,
-      image_url: form.image_url || null,
       currency,
       attributes: form.attributes || {},
     };
@@ -350,7 +336,6 @@ export default function InventarioPage() {
               currencyConfig={currencyConfig}
               branch={branch}
               saving={saving}
-              onImageChange={handleImageChange}
               onSubmit={handleSaveProduct}
               onCancel={() => setShowForm(false)}
             />
@@ -394,7 +379,7 @@ export default function InventarioPage() {
             >
               <option value="all">Todos los vencimientos</option>
               <option value="expiring">Próximos a vencer / vencidos</option>
-              <option value="makeup">Solo maquillaje</option>
+              <option value="with_date">Con fecha de vencimiento</option>
             </select>
           </div>
 
@@ -436,16 +421,10 @@ export default function InventarioPage() {
                         return (
                         <tr key={product.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <ProductImage
-                                src={product.image_url}
-                                name={product.name}
-                                size="sm"
-                              />
-                              <div>
-                                <span className="font-medium text-slate-900">
-                                  {product.name}
-                                </span>
+                            <div>
+                              <span className="font-medium text-slate-900">
+                                {product.name}
+                              </span>
                                 {expiryStatus === "expiring_soon" && (
                                   <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                                     Por vencer
@@ -456,7 +435,6 @@ export default function InventarioPage() {
                                     Vencido
                                   </span>
                                 )}
-                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-slate-500">
@@ -473,7 +451,7 @@ export default function InventarioPage() {
                             {formatAttributesSummary(product.category_name, product.attributes) || "—"}
                           </td>
                           <td className="px-4 py-3">
-                            {isMakeupProduct(product) ? (
+                            {hasExpirationDate(product) ? (
                               <span
                                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${EXPIRY_STATUS_STYLES[expiryStatus] || EXPIRY_STATUS_STYLES.none}`}
                               >
@@ -621,13 +599,12 @@ function ProductForm({
   currencyConfig,
   branch,
   saving,
-  onImageChange,
   onSubmit,
   onCancel,
 }) {
   const selectedCategory = categories.find((c) => c.id === form.category_id);
   const attributeSchema = getCategoryAttributeSchema(selectedCategory?.name);
-  const isMakeupLine = /maquillaje/i.test(form.attributes?.linea || "");
+  const isMaryKay = (selectedCategory?.name || "").trim().toUpperCase() === "MARY KAY";
 
   function handleCategoryChange(categoryId) {
     const cat = categories.find((c) => c.id === categoryId);
@@ -700,19 +677,6 @@ function ProductForm({
           </select>
         </div>
 
-        <div className="sm:col-span-2">
-          <label className="mb-1 block text-sm font-medium">Imagen del producto</label>
-          <div className="flex items-center gap-4">
-            <ProductImage src={form.image_url} name={form.name} size="lg" />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onImageChange}
-              className="text-sm text-slate-600"
-            />
-          </div>
-        </div>
-
         <div>
           <label className="mb-1 block text-sm font-medium">Moneda</label>
           <select
@@ -748,7 +712,7 @@ function ProductForm({
             <div className="grid gap-3 sm:grid-cols-2">
               {attributeSchema.map((field) => {
                 const fieldRequired =
-                  field.required || (field.makeupRequired && isMakeupLine);
+                  field.required || (field.key === "vencimiento" && isMaryKay);
                 return (
                 <div key={field.key}>
                   <label className="mb-1 block text-sm font-medium">
@@ -775,7 +739,7 @@ function ProductForm({
                       className="w-full rounded-lg border border-slate-300 px-3 py-2"
                     />
                   )}
-                  {field.help && (field.key !== "vencimiento" || isMakeupLine) && (
+                  {field.help && (
                     <p className="mt-1 text-xs text-indigo-600">{field.help}</p>
                   )}
                 </div>

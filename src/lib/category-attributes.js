@@ -7,9 +7,8 @@ export const CATEGORY_ATTRIBUTE_SCHEMAS = {
       key: "vencimiento",
       label: "Fecha de vencimiento",
       type: "date",
-      required: false,
-      makeupRequired: true,
-      help: "Obligatoria en maquillaje. Cada producto tiene su propia fecha.",
+      required: true,
+      help: "Obligatoria. Al abrir caja se alerta si vence en 30 días o ya venció.",
     },
     { key: "linea", label: "Línea", type: "text" },
   ],
@@ -59,13 +58,13 @@ export function getEmptyAttributes(categoryName) {
 
 export function validateCategoryAttributes(categoryName, attributes = {}) {
   const schema = getCategoryAttributeSchema(categoryName);
-  const linea = String(attributes?.linea || "");
-  const isMakeupLine = /maquillaje/i.test(linea);
+  const isMaryKay = normalizeCategoryName(categoryName) === "MARY KAY";
 
   const missing = schema
     .filter((f) => {
-      if (f.key === "vencimiento" && isMakeupLine) return !String(attributes[f.key] ?? "").trim();
-      if (f.key === "vencimiento" && !isMakeupLine) return false;
+      if (f.key === "vencimiento" && isMaryKay) {
+        return !String(attributes[f.key] ?? "").trim();
+      }
       return f.required && !String(attributes[f.key] ?? "").trim();
     })
     .map((f) => f.label);

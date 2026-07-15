@@ -5,10 +5,12 @@ import {
   getCashRegisterData,
   openCashRegister,
   closeCashRegister,
+  getExpirationAlerts,
 } from "@/src/lib/pos-api";
 import { useUserProfile, formatDate } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
+import ExpirationAlertsList from "@/src/components/ExpirationAlertsList";
 
 export default function CajaPage() {
   const { profile } = useUserProfile();
@@ -20,6 +22,13 @@ export default function CajaPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [expiryAlerts, setExpiryAlerts] = useState([]);
+
+  async function loadExpiryAlerts() {
+    if (!profile?.tenant_id || !branch?.id) return;
+    const { data } = await getExpirationAlerts(profile.tenant_id, branch.id);
+    setExpiryAlerts(data || []);
+  }
 
   async function loadData() {
     if (!branch?.id) return;
@@ -28,6 +37,10 @@ export default function CajaPage() {
     setOpenRegister(open);
     setHistory(closed || []);
     setLoading(false);
+
+    if (open) {
+      await loadExpiryAlerts();
+    }
   }
 
   useEffect(() => {
@@ -56,7 +69,15 @@ export default function CajaPage() {
       setMessage({ type: "error", text: error.message });
     } else {
       setInitialBalance("");
-      setMessage({ type: "success", text: "Caja abierta correctamente." });
+      const { data: alerts } = await getExpirationAlerts(profile.tenant_id, branch.id);
+      setExpiryAlerts(alerts || []);
+      setMessage({
+        type: "success",
+        text:
+          (alerts?.length || 0) > 0
+            ? `Caja abierta. Revise ${alerts.length} alerta(s) de vencimiento abajo.`
+            : "Caja abierta correctamente.",
+      });
       await loadData();
     }
     setActionLoading(false);
@@ -114,6 +135,15 @@ export default function CajaPage() {
           }`}
         >
           {message.text}
+        </div>
+      )}
+
+      {openRegister && expiryAlerts.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50/80 p-4">
+          <h2 className="mb-3 text-sm font-bold text-amber-900">
+            Revisión de vencimientos — turno de hoy
+          </h2>
+          <ExpirationAlertsList alerts={expiryAlerts} />
         </div>
       )}
 

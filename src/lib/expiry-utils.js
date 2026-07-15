@@ -1,20 +1,20 @@
-/** Vencimiento de productos de maquillaje */
+/** Vencimiento de productos */
 
-export const EXPIRY_WARNING_MONTHS = 2;
+export const EXPIRY_WARNING_DAYS = 30;
 
 const PLACEHOLDER_DATES = new Set(["2027-12-31", ""]);
 
-export function isMakeupProduct(product) {
-  const linea = String(product?.attributes?.linea || "").trim();
-  if (/maquillaje/i.test(linea)) return true;
-  const cat = String(product?.category_name || "").trim();
-  return /^maquillaje/i.test(cat);
+export function hasExpirationDate(product) {
+  return !!parseExpiryDate(product?.attributes?.vencimiento);
 }
 
-export function requiresExpirationDate(categoryName, attributes = {}) {
-  const linea = String(attributes?.linea || "").trim();
-  if (/maquillaje/i.test(linea)) return true;
-  return normalizeCategoryName(categoryName) === "MARY KAY" && /maquillaje/i.test(linea);
+/** @deprecated Use hasExpirationDate — maquillaje u otro producto con fecha */
+export function isMakeupProduct(product) {
+  return hasExpirationDate(product) || /maquillaje/i.test(String(product?.attributes?.linea || ""));
+}
+
+export function requiresExpirationDate(categoryName) {
+  return normalizeCategoryName(categoryName) === "MARY KAY";
 }
 
 function normalizeCategoryName(name) {
@@ -52,9 +52,7 @@ function startOfDay(date) {
 }
 
 /** @returns {'none'|'ok'|'expiring_soon'|'expired'} */
-export function getExpiryStatus(product, monthsBefore = EXPIRY_WARNING_MONTHS) {
-  if (!isMakeupProduct(product)) return "none";
-
+export function getExpiryStatus(product, daysBefore = EXPIRY_WARNING_DAYS) {
   const expiry = parseExpiryDate(product?.attributes?.vencimiento);
   if (!expiry) return "none";
 
@@ -64,7 +62,7 @@ export function getExpiryStatus(product, monthsBefore = EXPIRY_WARNING_MONTHS) {
   if (expDay < today) return "expired";
 
   const warningLimit = new Date(today);
-  warningLimit.setMonth(warningLimit.getMonth() + monthsBefore);
+  warningLimit.setDate(warningLimit.getDate() + daysBefore);
 
   if (expDay <= warningLimit) return "expiring_soon";
   return "ok";
@@ -85,16 +83,16 @@ export function getExpiryAlertMessage(product) {
         : days === 1
           ? "vence mañana"
           : `vence en ${days} días (${dateLabel})`;
-    return `"${product.name}" está próximo a vencerse — ${daysText}.`;
+    return `"${product.name}" está próximo a vencer — ${daysText}.`;
   }
   return null;
 }
 
-export function getMakeupExpirationAlerts(products, { onlyInStock = true } = {}) {
+export function getExpirationAlerts(products, { onlyInStock = true } = {}) {
   const alerts = [];
 
   for (const product of products) {
-    if (!isMakeupProduct(product)) continue;
+    if (!hasExpirationDate(product)) continue;
     if (onlyInStock && !(product.stock > 0)) continue;
 
     const status = getExpiryStatus(product);
@@ -117,6 +115,9 @@ export function getMakeupExpirationAlerts(products, { onlyInStock = true } = {})
     return (a.daysRemaining ?? 999) - (b.daysRemaining ?? 999);
   });
 }
+
+/** @deprecated */
+export const getMakeupExpirationAlerts = getExpirationAlerts;
 
 export const EXPIRY_STATUS_LABELS = {
   expired: "Vencido",

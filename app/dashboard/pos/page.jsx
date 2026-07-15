@@ -10,7 +10,6 @@ import {
 import { useUserProfile } from "@/src/hooks/useUserProfile";
 import { useBranch } from "@/src/hooks/useBranchContext";
 import { useCurrency } from "@/src/hooks/useCurrency";
-import ProductImage from "@/src/components/ProductImage";
 import Receipt from "@/src/components/Receipt";
 import {
   CARD_FEE_RATE,
@@ -87,7 +86,7 @@ export default function POSPage() {
     if (expiryStatus === "expired") {
       setMessage({
         type: "error",
-        text: getExpiryAlertMessage(product) || "Producto de maquillaje vencido.",
+        text: getExpiryAlertMessage(product) || `"${product.name}" está vencido.`,
       });
       return;
     }
@@ -117,7 +116,6 @@ export default function POSPage() {
           cost: Number(product.cost || 0),
           quantity: 1,
           maxStock: product.stock,
-          image_url: product.image_url,
           category_name: product.category_name,
           attributes: product.attributes,
         },
@@ -306,12 +304,6 @@ export default function POSPage() {
                       onClick={() => addToCart(product)}
                       className="rounded-xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200 transition hover:ring-indigo-300 hover:shadow-md"
                     >
-                      <ProductImage
-                        src={product.image_url}
-                        name={product.name}
-                        size="lg"
-                        className="mb-3"
-                      />
                       <p className="font-semibold text-slate-900">{product.name}</p>
                       <p className="text-xs text-slate-500">{product.presentation_name}</p>
                       {formatAttributesSummary(product.category_name, product.attributes) && (
@@ -321,7 +313,12 @@ export default function POSPage() {
                       )}
                       {getExpiryStatus(product) === "expiring_soon" && (
                         <p className="text-xs font-medium text-amber-700">
-                          Vence {formatExpiryDate(product.attributes?.vencimiento)}
+                          Por vencer — {formatExpiryDate(product.attributes?.vencimiento)}
+                        </p>
+                      )}
+                      {getExpiryStatus(product) === "expired" && (
+                        <p className="text-xs font-medium text-red-700">
+                          Vencido — {formatExpiryDate(product.attributes?.vencimiento)}
                         </p>
                       )}
                       <p className="mt-1 text-lg font-bold text-indigo-600">
@@ -350,14 +347,11 @@ export default function POSPage() {
                   key={item.product_id}
                   className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <ProductImage src={item.image_url} name={item.name} size="sm" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{item.name}</p>
-                      <p className="text-xs text-slate-400">
-                        {formatMoney(item.price)} c/u
-                      </p>
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {formatMoney(item.price)} c/u
+                    </p>
                   </div>
                   <div className="flex items-center gap-1">
                     <button

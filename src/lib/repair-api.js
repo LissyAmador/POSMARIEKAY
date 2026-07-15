@@ -1,6 +1,8 @@
 import { isDemoMode } from "./demo-mode";
 import { getDemoStore, updateDemoStore, uuid } from "./demo/store";
 import { getSaleWithDetails } from "./pos-api";
+import { supabase } from "@/src/utils/supabase/client";
+import { enrichSupabaseProduct } from "./supabase-helpers";
 import {
   calculateRepairTotal,
   generateTicketPassword,
@@ -53,7 +55,16 @@ export async function getTechnicians(tenantId, branchId) {
     );
     return { data: techs, error: null };
   }
-  return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("technicians")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("branch_id", branchId)
+    .eq("active", true)
+    .order("name");
+
+  return { data: data || [], error };
 }
 
 export async function getRepairCatalog(tenantId, branchId) {
@@ -83,7 +94,36 @@ export async function getRepairCatalog(tenantId, branchId) {
       error: null,
     };
   }
-  return { data: { services: [], parts: [], phones: [], brandCatalog: {}, brands: [] }, error: null };
+
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("*, categories(name), inventory!inner(stock, branch_id)")
+    .eq("tenant_id", tenantId)
+    .eq("inventory.branch_id", branchId);
+
+  if (error) {
+    return {
+      data: { services: [], parts: [], phones: [], brandCatalog: {}, brands: [] },
+      error,
+    };
+  }
+
+  const enriched = (products || []).map((p) => enrichSupabaseProduct(p));
+  const services = enriched.filter((p) => SERVICE_CATEGORY_NAMES.has(p.category_name));
+  const parts = enriched.filter((p) => PARTS_CATEGORY_NAMES.has(p.category_name));
+  const phones = enriched.filter((p) => PHONE_CATEGORY_NAMES.has(p.category_name));
+  const brandCatalog = getMergedBrandCatalog(phones);
+
+  return {
+    data: {
+      services,
+      parts,
+      phones,
+      brandCatalog,
+      brands: getBrandListFromCatalog(brandCatalog),
+    },
+    error: null,
+  };
 }
 
 export function getPartsForBrandModel(parts, brand, model) {
@@ -103,7 +143,17 @@ export async function getRepairOrders(branchId) {
       .map((order) => enrichOrder(order, branchId));
     return { data: orders, error: null };
   }
-  return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("repair_orders")
+    .select("*")
+    .eq("branch_id", branchId)
+    .order("created_at", { ascending: false });
+
+  return {
+    data: (data || []).map((order) => enrichOrder(order, branchId)),
+    error,
+  };
 }
 
 function enrichOrder(order, branchId) {
@@ -135,7 +185,21 @@ export async function findRepairOrder(branchId, query) {
     return { data: enrichOrder(order, branchId), error: null };
   }
 
-  return { data: null, error: null };
+  const q = query.trim().toUpperCase();
+  const { data, error } = await supabase
+    .from("repair_orders")
+    .select("*")
+    .eq("branch_id", branchId)
+    .or(`ticket_number.ilike.%${q}%,ticket_password.eq.${query.trim()}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { data: null, error };
+  if (!data) {
+    return { data: null, error: { message: "Ticket no encontrado en esta sucursal." } };
+  }
+
+  return { data: enrichOrder(data, branchId), error: null };
 }
 
 export async function createRepairOrder({
@@ -184,8 +248,7 @@ export async function createRepairOrder({
     const store = getDemoStore();
     const orderId = uuid();
     const finalTicketNumber =
-      ticketNumber?.trim() ||
-      getRepairTicketNumber(orderId, branchId);
+      ticketNumber?.trim() || getRepairTicketNumber(orderId, branchId);
 
     const duplicate = (store.repair_orders || []).some(
       (o) =>
@@ -248,27 +311,53 @@ export async function createRepairOrder({
     return { data: order, error: null };
   }
 
-  return { error: { message: "Conecte Supabase para producción." } };
-}
+  const orderId = uuid();
+  const finalTicketNumber = ticketNumber?.trim() || getRepairTicketNumber(orderId, branchId);
+  const ticketPassword = generateTicketPassword();
+  const totalCost = calculateRepairTotal(laborCost, parts);
 
-function buildSaleItemsFromOrder(order) {
-  const items = [
-    {
-      product_id: order.repair_service_id,
-      quantity: 1,
-      price: order.labor_cost,
-    },
-  ];
+  const { data: existing } = await supabase
+    .from("repair_orders")
+    .select("id")
+    .eq("branch_id", branchId)
+    .ilike("ticket_number", finalTicketNumber)
+    .maybeSingle();
 
-  for (const part of order.parts || []) {
-    items.push({
-      product_id: part.product_id,
-      quantity: part.quantity,
-      price: part.price,
-    });
+  if (existing) {
+    return { error: { message: "El número de ticket ya existe en esta sucursal." } };
   }
 
-  return items;
+  const { data, error } = await supabase
+    .from("repair_orders")
+    .insert({
+      id: orderId,
+      tenant_id: tenantId,
+      branch_id: branchId,
+      user_id: userId,
+      ticket_number: finalTicketNumber,
+      ticket_password: ticketPassword,
+      client_name: clientName.trim(),
+      client_phone: clientPhone.trim(),
+      device_brand: deviceBrand.trim(),
+      device_model: deviceModel.trim(),
+      device_condition: deviceCondition,
+      condition_notes: conditionNotes?.trim() || "",
+      repair_service_id: repairServiceId,
+      repair_service_name: repairServiceName,
+      labor_cost: Number(laborCost) || 0,
+      parts: parts || [],
+      technician_id: technicianId,
+      technician_name: technicianName,
+      estimated_completion: estimatedCompletion,
+      notes: notes?.trim() || "",
+      total_cost: totalCost,
+      status: "recibido",
+      parts_deducted: false,
+    })
+    .select()
+    .single();
+
+  return { data, error };
 }
 
 export async function deliverRepairOrder({
@@ -300,7 +389,19 @@ export async function deliverRepairOrder({
       };
     }
 
-    const items = buildSaleItemsFromOrder(order);
+    const items = [
+      {
+        product_id: order.repair_service_id,
+        quantity: 1,
+        price: order.labor_cost,
+      },
+      ...(order.parts || []).map((part) => ({
+        product_id: part.product_id,
+        quantity: part.quantity,
+        price: part.price,
+      })),
+    ];
+
     const itemsToDeduct = order.parts_deducted
       ? items.filter((i) => i.product_id === order.repair_service_id)
       : items;
@@ -394,10 +495,34 @@ export async function deliverRepairOrder({
     };
   }
 
-  return { error: { message: "Conecte Supabase para producción." } };
+  const { data, error } = await supabase.rpc("deliver_repair_order", {
+    p_order_id: orderId,
+    p_payment_method: paymentMethod,
+  });
+
+  if (error) return { error };
+
+  const saleId = data?.sale_id;
+  if (!saleId) return { error: { message: "No se generó el recibo de entrega." } };
+
+  const receipt = await getSaleWithDetails(saleId);
+  const { data: order } = await supabase
+    .from("repair_orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
+
+  return {
+    data: {
+      order: enrichOrder(order, order?.branch_id),
+      sale: receipt.sale,
+      items: receipt.details,
+    },
+    error: null,
+  };
 }
 
-export async function updateRepairOrderStatus(orderId, status, userId) {
+export async function updateRepairOrderStatus(orderId, status) {
   if (status === "entregado") {
     return {
       error: {
@@ -417,7 +542,11 @@ export async function updateRepairOrderStatus(orderId, status, userId) {
     }));
     return { error: null };
   }
-  return { error: null };
+
+  return supabase
+    .from("repair_orders")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", orderId);
 }
 
 export async function getRepairOrderById(orderId) {
@@ -430,7 +559,18 @@ export async function getRepairOrderById(orderId) {
       error: null,
     };
   }
-  return { data: null, error: null };
+
+  const { data, error } = await supabase
+    .from("repair_orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return { data: null, error: error || { message: "Orden no encontrada." } };
+  }
+
+  return { data: enrichOrder(data, data.branch_id), error: null };
 }
 
 export async function getRepairReceipt(orderId) {
@@ -446,5 +586,27 @@ export async function getRepairReceipt(orderId) {
       error: null,
     };
   }
-  return { data: null, error: null };
+
+  const { data: order, error } = await supabase
+    .from("repair_orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error || !order?.sale_id) {
+    return {
+      data: null,
+      error: error || { message: "Esta orden aún no tiene recibo." },
+    };
+  }
+
+  const receipt = await getSaleWithDetails(order.sale_id);
+  return {
+    data: {
+      order: enrichOrder(order, order.branch_id),
+      sale: receipt.sale,
+      items: receipt.details,
+    },
+    error: null,
+  };
 }

@@ -19,7 +19,12 @@ import {
   summarizeProfit,
   calcSaleProfit,
 } from "./profit-utils";
-import { getMakeupExpirationAlerts } from "./expiry-utils";
+import { getExpirationAlerts as buildExpirationAlerts } from "./expiry-utils";
+import {
+  enrichSupabaseProduct,
+  mapSupabaseProducts,
+  resolveRoleFromDb,
+} from "./supabase-helpers";
 
 export const auth = {
   async getSession() {
@@ -70,11 +75,33 @@ export async function getUserProfile(userId) {
     };
   }
 
-  return supabase
+  const { data: profile, error } = await supabase
     .from("users_profiles")
-    .select("*, tenants(*), branches(*)")
+    .select("*, tenants(*), branches(*), roles(*)")
     .eq("user_id", userId)
     .single();
+
+  if (error || !profile) {
+    return { data: null, error: error || { message: "Perfil no encontrado" } };
+  }
+
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  const roleData = resolveRoleFromDb(profile);
+
+  return {
+    data: {
+      ...profile,
+      name: profile.display_name || user?.user_metadata?.display_name || user?.email,
+      email: user?.email,
+      role: roleData.slug,
+      role_name: roleData.name,
+      permissions: roleData.permissions,
+      tenants: profile.tenants,
+      branches: profile.branches,
+    },
+    error: null,
+  };
 }
 
 export async function getTenantBranches(tenantId) {
@@ -411,19 +438,21 @@ export async function getInventoryProducts(tenantId, branchId) {
     return { data: products, error: null };
   }
 
-  return supabase
+  const { data, error } = await supabase
     .from("products")
-    .select(`*, inventory!inner(stock, branch_id)`)
+    .select(`*, categories(name), presentations(name), inventory!inner(stock, branch_id)`)
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
     .order("name");
+
+  return { data: mapSupabaseProducts(data), error };
 }
 
 export async function getExpirationAlerts(tenantId, branchId) {
   const { data: products, error } = await getInventoryProducts(tenantId, branchId);
   if (error) return { data: [], error };
 
-  const alerts = getMakeupExpirationAlerts(products || [], { onlyInStock: true });
+  const alerts = buildExpirationAlerts(products || [], { onlyInStock: true });
   return { data: alerts, error: null };
 }
 
@@ -438,7 +467,7 @@ export async function getPOSProducts(tenantId, branchId, { includeOutOfStock = f
 
   let query = supabase
     .from("products")
-    .select(`*, inventory!inner(stock, branch_id)`)
+    .select(`*, categories(name), presentations(name), inventory!inner(stock, branch_id)`)
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
     .order("name");
@@ -447,7 +476,8 @@ export async function getPOSProducts(tenantId, branchId, { includeOutOfStock = f
     query = query.gt("inventory.stock", 0);
   }
 
-  return query;
+  const { data, error } = await query;
+  return { data: mapSupabaseProducts(data), error };
 }
 
 export async function saveProduct({
@@ -668,6 +698,7 @@ export async function processSale({
     p_items: items,
     p_requires_shipping: requiresShipping,
     p_shipping_cost: shippingCost,
+    p_branch_id: branchId,
   });
 }
 
@@ -994,11 +1025,7 @@ export async function voidSale(saleId) {
     return { error: null };
   }
 
-  return {
-    error: {
-      message: "Anulación disponible en modo demo. Conecte Supabase para producción.",
-    },
-  };
+  return supabase.rpc("void_sale", { p_sale_id: saleId });
 }
 
 export async function getSalesReport(
@@ -1166,9 +1193,59 @@ export async function getProfitReport(
     };
   }
 
+  let query = supabase
+    .from("sales")
+    .select("*")
+    .eq("branch_id", branchId)
+    .neq("status", "anulada")
+    .order("created_at", { ascending: false });
+
+  if (startDate) {
+    query = query.gte("created_at", `${startDate}T00:00:00`);
+  }
+  if (endDate) {
+    query = query.lte("created_at", `${endDate}T23:59:59`);
+  }
+
+  const { data: sales, error } = await query;
+  if (error) return { data: null, error };
+
+  const salesWithDetails = await Promise.all(
+    (sales || []).map(async (sale) => {
+      const { data: details } = await supabase
+        .from("sales_details")
+        .select("*, products(name, cost)")
+        .eq("sale_id", sale.id);
+      return {
+        sale,
+        details: (details || []).map((d) => ({
+          ...d,
+          cost: d.cost ?? d.products?.cost ?? 0,
+          products: d.products,
+        })),
+      };
+    })
+  );
+
+  const summary = summarizeProfit(salesWithDetails);
+  const groupFns = {
+    day: groupProfitByDay,
+    month: groupProfitByMonth,
+    product: () =>
+      groupProfitByProduct(
+        salesWithDetails,
+        salesWithDetails.flatMap((s) => s.details.map((d) => d.products).filter(Boolean))
+      ),
+    client: groupProfitByClient,
+  };
+
   return {
-    data: null,
-    error: { message: "Reporte de utilidad disponible en modo demo." },
+    data: {
+      summary,
+      groups: (groupFns[groupBy] || groupProfitByDay)(salesWithDetails),
+      groupBy,
+    },
+    error: null,
   };
 }
 
@@ -1190,7 +1267,23 @@ export async function getTenantSellers(tenantId) {
     return { data: sellers, error: null };
   }
 
-  return { data: [], error: null };
+  const { data: profiles, error } = await supabase
+    .from("users_profiles")
+    .select("user_id, branch_id, display_name, active, branches(name)")
+    .eq("tenant_id", tenantId)
+    .eq("active", true);
+
+  if (error) return { data: [], error };
+
+  return {
+    data: (profiles || []).map((profile) => ({
+      user_id: profile.user_id,
+      branch_id: profile.branch_id,
+      name: profile.display_name || "Vendedora",
+      branch_name: profile.branches?.name || "—",
+    })),
+    error: null,
+  };
 }
 
 export async function getSellerExchanges(tenantId, branchId) {
@@ -1222,7 +1315,47 @@ export async function getSellerExchanges(tenantId, branchId) {
     return { data: exchanges, error: null };
   }
 
-  return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("seller_exchanges")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .or(`from_branch_id.eq.${branchId},to_branch_id.eq.${branchId}`)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error };
+
+  const enriched = await Promise.all(
+    (data || []).map(async (exchange) => {
+      const [fromProfile, toProfile, product, fromBranch, toBranch] = await Promise.all([
+        supabase
+          .from("users_profiles")
+          .select("display_name")
+          .eq("user_id", exchange.from_user_id)
+          .maybeSingle(),
+        supabase
+          .from("users_profiles")
+          .select("display_name")
+          .eq("user_id", exchange.to_user_id)
+          .maybeSingle(),
+        exchange.product_id
+          ? supabase.from("products").select("name").eq("id", exchange.product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        supabase.from("branches").select("name").eq("id", exchange.from_branch_id).maybeSingle(),
+        supabase.from("branches").select("name").eq("id", exchange.to_branch_id).maybeSingle(),
+      ]);
+
+      return {
+        ...exchange,
+        product_name: product.data?.name,
+        from_user_name: fromProfile.data?.display_name,
+        to_user_name: toProfile.data?.display_name,
+        from_branch_name: fromBranch.data?.name,
+        to_branch_name: toBranch.data?.name,
+      };
+    })
+  );
+
+  return { data: enriched, error: null };
 }
 
 export async function processSellerExchange({
@@ -1346,9 +1479,18 @@ export async function processSellerExchange({
     return { data: { amount }, error: null };
   }
 
-  return {
-    error: { message: "Intercambios disponibles en modo demo." },
-  };
+  return supabase.rpc("process_seller_exchange", {
+    p_tenant_id: tenantId,
+    p_from_user_id: fromUserId,
+    p_from_branch_id: fromBranchId,
+    p_to_user_id: toUserId,
+    p_to_branch_id: toBranchId,
+    p_type: type,
+    p_product_id: productId || null,
+    p_quantity: quantity,
+    p_amount: cashAmount,
+    p_notes: notes?.trim() || null,
+  });
 }
 
 export { isDemoMode, DEMO_TENANT_ID, DEMO_BRANCH_ID };

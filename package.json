@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "import:inventario": "node scripts/generate-sandy-inventory.js"
+    "import:inventario": "node scripts/generate-sandy-inventory.js",
+    "generate:seed": "node scripts/generate-sandy-seed-sql.js",
+    "setup:supabase": "node scripts/apply-supabase-setup.mjs",
+    "migrate:users": "node scripts/migrate-users.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
@@ -21,6 +24,7 @@
     "@tailwindcss/postcss": "^4.1.8",
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
+    "pg": "^8.22.0",
     "tailwindcss": "^4.1.8"
   }
 }

@@ -4,6 +4,30 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, isDemoMode } from "@/src/lib/pos-api";
 
+const PRODUCTION_ACCOUNTS = [
+  {
+    org: "Sandy",
+    role: "Administradora",
+    email: "admin@posmariekay.com",
+    password: "SandyAdmin123!",
+    access: "Todas las pantallas — Mary Kay, ropa y carteras",
+  },
+  {
+    org: "Sandy — María",
+    role: "Vendedora",
+    email: "maria@posmariekay.com",
+    password: "Sandy123!",
+    access: "POS, Inventario, Intercambios y Reportes",
+  },
+  {
+    org: "Sandy — Laura",
+    role: "Vendedora",
+    email: "laura@posmariekay.com",
+    password: "Sandy123!",
+    access: "POS, Inventario, Intercambios y Reportes",
+  },
+];
+
 const DEMO_ACCOUNTS = [
   {
     org: "Plataforma (Super Usuario)",
@@ -73,10 +97,24 @@ const DEMO_ACCOUNTS = [
 export default function LoginPage() {
   const router = useRouter();
   const demo = isDemoMode();
-  const [email, setEmail] = useState("superadmin@pos.demo");
-  const [password, setPassword] = useState("SuperAdmin123!");
+  const [email, setEmail] = useState(demo ? "superadmin@pos.demo" : "admin@posmariekay.com");
+  const [password, setPassword] = useState(demo ? "SuperAdmin123!" : "SandyAdmin123!");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function translateAuthError(message) {
+    const msg = String(message || "").toLowerCase();
+    if (msg.includes("invalid login credentials")) {
+      return "Credenciales incorrectas. Verifique correo y contraseña, o cree el usuario en Supabase Auth (Authentication → Users).";
+    }
+    if (msg.includes("email not confirmed")) {
+      return "Correo no confirmado. En Supabase desactive 'Confirm email' o confirme el usuario manualmente.";
+    }
+    if (msg.includes("email address") && msg.includes("invalid")) {
+      return "Correo no válido para Supabase. Use un correo real (Gmail, Outlook, etc.), no dominios .demo.";
+    }
+    return message || "No se pudo iniciar sesión.";
+  }
 
   function fillAccount(account) {
     setEmail(account.email);
@@ -94,7 +132,7 @@ export default function LoginPage() {
     });
 
     if (authError) {
-      setError(authError.message);
+      setError(translateAuthError(authError.message));
       setLoading(false);
       return;
     }
@@ -116,6 +154,11 @@ export default function LoginPage() {
           {demo && (
             <span className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
               Modo demostración — datos de prueba incluidos
+            </span>
+          )}
+          {!demo && (
+            <span className="mt-3 inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+              Conectado a Supabase — use un usuario creado en Auth
             </span>
           )}
         </div>
@@ -157,15 +200,46 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-lg bg-indigo-600 py-2.5 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
           >
-            {loading ? "Ingresando..." : "Iniciar sesión demo"}
+            {loading ? "Ingresando..." : demo ? "Iniciar sesión demo" : "Iniciar sesión"}
           </button>
         </form>
 
-        <div className="mt-6 rounded-lg bg-slate-50 p-4">
-          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Cuentas de demostración
-          </p>
-          <div className="max-h-64 space-y-2 overflow-y-auto">
+        {!demo && (
+          <div className="mt-6 rounded-lg bg-slate-50 p-4">
+            <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Cuentas Sandy (Supabase)
+            </p>
+            <div className="max-h-64 space-y-2 overflow-y-auto">
+              {PRODUCTION_ACCOUNTS.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => fillAccount(account)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-indigo-300 hover:bg-indigo-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-slate-800">{account.role}</p>
+                      <p className="text-slate-500">{account.org}</p>
+                      <p className="mt-1 font-mono text-slate-600">
+                        {account.email} / {account.password}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-indigo-600">Usar →</span>
+                  </div>
+                  <p className="mt-1 text-slate-400">{account.access}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {demo && (
+          <div className="mt-6 rounded-lg bg-slate-50 p-4">
+            <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Cuentas de demostración
+            </p>
+            <div className="max-h-64 space-y-2 overflow-y-auto">
             {DEMO_ACCOUNTS.map((account) => (
               <button
                 key={account.email}
@@ -188,8 +262,9 @@ export default function LoginPage() {
                 <p className="mt-1 text-slate-400">{account.access}</p>
               </button>
             ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
