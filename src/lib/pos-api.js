@@ -449,10 +449,32 @@ export async function getInventoryProducts(tenantId, branchId) {
 }
 
 export async function getExpirationAlerts(tenantId, branchId) {
-  const { data: products, error } = await getInventoryProducts(tenantId, branchId);
+  if (isDemoMode()) {
+    const { data: products, error } = await getInventoryProducts(tenantId, branchId);
+    if (error) return { data: [], error };
+    const alerts = buildExpirationAlerts(products || [], { onlyInStock: true });
+    return { data: alerts, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, name, attributes, inventory!inner(stock, branch_id)")
+    .eq("tenant_id", tenantId)
+    .eq("inventory.branch_id", branchId)
+    .gt("inventory.stock", 0)
+    .not("attributes->>vencimiento", "is", null)
+    .neq("attributes->>vencimiento", "2027-12-31");
+
   if (error) return { data: [], error };
 
-  const alerts = buildExpirationAlerts(products || [], { onlyInStock: true });
+  const products = (data || []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    attributes: row.attributes,
+    stock: Array.isArray(row.inventory) ? row.inventory[0]?.stock ?? 0 : row.inventory?.stock ?? 0,
+  }));
+
+  const alerts = buildExpirationAlerts(products, { onlyInStock: true });
   return { data: alerts, error: null };
 }
 
