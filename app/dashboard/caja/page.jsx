@@ -40,7 +40,7 @@ export default function CajaPage() {
         setExpiryAlerts(data || []);
       });
     }
-    const interval = setInterval(loadCashRegister, 5000);
+    const interval = setInterval(loadCashRegister, 30000);
     return () => clearInterval(interval);
   }, [branch?.id, profile?.tenant_id]);
 
@@ -202,7 +202,7 @@ export default function CajaPage() {
             </div>
 
             <p className="mt-4 text-xs text-slate-400">
-              Se actualiza automáticamente cada 5 segundos con ventas y abonos.
+              Se actualiza automáticamente cada 30 segundos con ventas y abonos.
             </p>
 
             <button
