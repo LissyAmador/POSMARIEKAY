@@ -1340,43 +1340,46 @@ export async function getSellerExchanges(tenantId, branchId) {
 
   const { data, error } = await supabase
     .from("seller_exchanges")
-    .select("*")
+    .select(`
+      *,
+      products(name),
+      from_branch:branches!from_branch_id(name),
+      to_branch:branches!to_branch_id(name)
+    `)
     .eq("tenant_id", tenantId)
     .or(`from_branch_id.eq.${branchId},to_branch_id.eq.${branchId}`)
     .order("created_at", { ascending: false });
 
   if (error) return { data: [], error };
 
-  const enriched = await Promise.all(
-    (data || []).map(async (exchange) => {
-      const [fromProfile, toProfile, product, fromBranch, toBranch] = await Promise.all([
-        supabase
-          .from("users_profiles")
-          .select("display_name")
-          .eq("user_id", exchange.from_user_id)
-          .maybeSingle(),
-        supabase
-          .from("users_profiles")
-          .select("display_name")
-          .eq("user_id", exchange.to_user_id)
-          .maybeSingle(),
-        exchange.product_id
-          ? supabase.from("products").select("name").eq("id", exchange.product_id).maybeSingle()
-          : Promise.resolve({ data: null }),
-        supabase.from("branches").select("name").eq("id", exchange.from_branch_id).maybeSingle(),
-        supabase.from("branches").select("name").eq("id", exchange.to_branch_id).maybeSingle(),
-      ]);
+  const userIds = [
+    ...new Set(
+      (data || []).flatMap((e) => [e.from_user_id, e.to_user_id]).filter(Boolean)
+    ),
+  ];
 
-      return {
-        ...exchange,
-        product_name: product.data?.name,
-        from_user_name: fromProfile.data?.display_name,
-        to_user_name: toProfile.data?.display_name,
-        from_branch_name: fromBranch.data?.name,
-        to_branch_name: toBranch.data?.name,
-      };
-    })
+  const { data: profiles } = userIds.length
+    ? await supabase
+        .from("users_profiles")
+        .select("user_id, display_name")
+        .in("user_id", userIds)
+    : { data: [] };
+
+  const profileMap = Object.fromEntries(
+    (profiles || []).map((p) => [p.user_id, p.display_name])
   );
+
+  const enriched = (data || []).map((exchange) => ({
+    ...exchange,
+    product_name: exchange.products?.name,
+    from_user_name: profileMap[exchange.from_user_id],
+    to_user_name: profileMap[exchange.to_user_id],
+    from_branch_name: exchange.from_branch?.name,
+    to_branch_name: exchange.to_branch?.name,
+    products: undefined,
+    from_branch: undefined,
+    to_branch: undefined,
+  }));
 
   return { data: enriched, error: null };
 }
