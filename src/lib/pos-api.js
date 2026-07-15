@@ -23,6 +23,7 @@ import { getExpirationAlerts as buildExpirationAlerts } from "./expiry-utils";
 import {
   enrichSupabaseProduct,
   mapSupabaseProducts,
+  PRODUCT_LIST_SELECT,
   resolveRoleFromDb,
 } from "./supabase-helpers";
 
@@ -440,7 +441,7 @@ export async function getInventoryProducts(tenantId, branchId) {
 
   const { data, error } = await supabase
     .from("products")
-    .select(`*, categories(name), presentations(name), inventory!inner(stock, branch_id)`)
+    .select(PRODUCT_LIST_SELECT)
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
     .order("name");
@@ -489,7 +490,7 @@ export async function getPOSProducts(tenantId, branchId, { includeOutOfStock = f
 
   let query = supabase
     .from("products")
-    .select(`*, categories(name), presentations(name), inventory!inner(stock, branch_id)`)
+    .select(PRODUCT_LIST_SELECT)
     .eq("tenant_id", tenantId)
     .eq("inventory.branch_id", branchId)
     .order("name");

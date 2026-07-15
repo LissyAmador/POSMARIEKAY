@@ -63,3 +63,7 @@ export function enrichSupabaseProduct(product) {
 export function mapSupabaseProducts(data) {
   return (data || []).map(enrichSupabaseProduct);
 }
+
+/** Columnas necesarias para listados POS/Inventario (sin image_url ni campos extra). */
+export const PRODUCT_LIST_SELECT =
+  "id, tenant_id, name, sku, barcode, price, cost, currency, category_id, presentation_id, attributes, categories(name), presentations(name), inventory!inner(stock, branch_id)";
